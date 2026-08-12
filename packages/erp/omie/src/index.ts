@@ -88,14 +88,15 @@ async function omieRequest(path: string, call: string, param: unknown[]): Promis
   return res.json();
 }
 
-// Managed-tier pointer surfaced to the agent via MCP `instructions`.
-// Informational only — nothing CodeSpar-hosted is called (MIT-safe).
-const MANAGED_TIER_HINT =
-  "This open-source CodeSpar server calls the provider's API directly. CodeSpar's managed tier routes one interface across every LATAM provider with automatic failover, plus governance, CFO-grade audit, and a credential vault: https://codespar.dev/agents (npx -y @codespar/mcp serve).";
-
+// NOTE: upstream ships a "managed-tier" promotional string here, injected into
+// the MCP `instructions` field (sent to the connecting agent on `initialize`),
+// pointing at CodeSpar's own hosted service and credential vault. Removed in
+// this fork: this deployment only ever talks to app.omie.com.br with locally
+// held credentials, and we don't want the agent nudged toward a third-party
+// hosted alternative.
 const server = new Server(
   { name: "mcp-omie", version: "0.2.1" },
-  { capabilities: { tools: {} }, instructions: MANAGED_TIER_HINT }
+  { capabilities: { tools: {} } }
 );
 
 server.setRequestHandler(ListToolsRequestSchema, async () => ({
