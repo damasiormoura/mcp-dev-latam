@@ -1,6 +1,11 @@
 # Auditoria das tools do MCP Omie × documentação oficial da API
 
-_Data: 2026-08-12 — versão auditada: `mcp-omie` 0.2.1 (30 tools, `src/index.ts`)._
+_Data: 2026-08-12 — versão auditada: `mcp-omie` 0.2.2 (30 tools, `src/index.ts`)._
+
+> **Status:** as 7 tools da seção 1 foram corrigidas em **0.2.3** — schemas
+> reescritos conforme o contrato documentado, mais validação de argumentos
+> antes do envio e teste de contrato cobrindo as 30 tools. As seções 2, 4 e 5
+> continuam abertas.
 
 Fonte da verdade: as páginas de referência publicadas pela Omie em
 `https://app.omie.com.br/api/v1/<recurso>/` (lista em
@@ -14,12 +19,12 @@ endpoint.
 
 ## Sumário executivo
 
-| Situação | Tools |
-|---|---|
-| ❌ **Quebradas** — método inexistente ou payload incompatível | 7 |
-| ⚠️ Chamada correta, **parâmetro inválido** (filtro ignorado ou erro) | 7 |
-| ✅ Conformes (ajustes opcionais) | 16 |
-| 🏷️ Nome enganoso — o agente escolhe a tool errada | 3 (sobrepõe as linhas acima) |
+| Situação | Tools | |
+|---|---|---|
+| ❌ **Quebradas** — método inexistente ou payload incompatível | 7 | ✔ corrigidas em 0.2.3 |
+| ⚠️ Chamada correta, **parâmetro inválido** (filtro ignorado ou erro) | 7 | aberto |
+| ✅ Conformes (ajustes opcionais) | 16 | — |
+| 🏷️ Nome enganoso — o agente escolhe a tool errada | 3 (sobrepõe as linhas acima) | aberto |
 
 **7 das 30 tools não conseguem funcionar em produção.** Duas delas
 (`create_purchase_order`, `list_purchase_orders`) chamam métodos que
@@ -37,7 +42,12 @@ método ou forma do `param` — exatamente onde estão todos os defeitos.
 
 ---
 
-## 1. Tools quebradas (P0)
+## 1. Tools quebradas (P0) — corrigidas em 0.2.3
+
+O diagnóstico abaixo descreve o estado em 0.2.2. Cada item foi corrigido
+substituindo o schema pelo contrato documentado; o teste de contrato em
+`src/__tests__/index.test.ts` fixa `(path, call)` das 30 tools e a forma do
+`param` das sete reescritas.
 
 ### 1.1 `create_purchase_order` — método inexistente
 
@@ -353,13 +363,18 @@ segue para a Omie, que responde com erro genérico de autenticação. Falhar no
 startup (stdio) ou responder com erro claro na primeira tool torna o problema
 diagnosticável.
 
-### 4.5 Zero validação de entrada
+### 4.5 Validação de entrada — parcialmente resolvido em 0.2.3
 
-Não há validação em runtime: `args` vai cru para `param[0]` em todas as tools
-de escrita. Combinado com schemas divergentes, o agente não recebe nenhum
-sinal de que montou o payload errado — só o 500 da Omie. Um `zod` por tool,
-espelhando o contrato real, converte um erro remoto opaco numa mensagem local
-acionável.
+Até 0.2.2 não havia validação alguma: `args` ia cru para `param[0]` em todas
+as tools de escrita e o agente só descobria o erro pelo 500 da Omie. 0.2.3
+adiciona um validador que percorre o próprio `inputSchema` da tool
+(obrigatórios, tipo objeto/array, `minItems`) antes do envio, então campo
+faltando vira mensagem local nomeando o campo.
+
+O que ainda falta: o validador não confere tipos escalares nem `enum`, e não
+expressa as regras "um dos dois" — `codigo_produto` **ou**
+`codigo_produto_integracao`, `nCodFor` **ou** `cCodIntFor`, `id_prod` **ou**
+`cod_int` — que hoje vivem só na descrição.
 
 ### 4.6 Modo demo cobre 7 de 30 tools
 
@@ -367,17 +382,22 @@ acionável.
 23 retornam `{demo:true, tool:name}`. Como o fallback nunca falha, o modo demo
 dá a impressão de que tudo funciona.
 
-### 4.7 A suíte de testes não testa o contrato
+### 4.7 A suíte de testes não testava o contrato — resolvido em 0.2.3
 
-`src/__tests__/index.test.ts` tem 53 linhas: conta as tools e verifica
-`ListarClientes`. Se houvesse um teste table-driven percorrendo as 30 tools e
-afirmando `(path, call)` esperados, os defeitos 1.1 e 1.2 (métodos
-inexistentes) teriam aparecido no primeiro run. Recomendo:
+Até 0.2.2, `src/__tests__/index.test.ts` tinha 53 linhas: contava as tools e
+verificava `ListarClientes`. Um teste table-driven percorrendo as 30 e
+afirmando `(path, call)` teria pego 1.1 e 1.2 (métodos inexistentes) no
+primeiro run. A suíte agora tem:
 
-1. tabela `tool → { path, call }` verificada para as 30;
-2. para cada tool de escrita, um snapshot das **chaves de topo** do `param`,
-   comparado com o exemplo oficial da doc;
-3. teste de que `registros_por_pagina > 100` é rejeitado.
+1. tabela `tool → { path, call }` verificada para as 30, mais a asserção de
+   que a lista de tools registradas é exatamente a da tabela;
+2. verificação da forma do `param` das 7 tools reescritas, incluindo a
+   ausência das chaves antigas (`itens`, `codigo_produto`, `tipo_ajuste`…);
+3. casos de validação: pedido sem `etapa`/`codigo_parcela` e ajuste sem
+   `origem`/`motivo` falham **sem** chamar a Omie.
+
+Ainda falta cobrir os filtros da seção 2 e um teste de que
+`registros_por_pagina > 100` é rejeitado (depende de 4.1).
 
 ### 4.8 Transporte HTTP: cópia de handlers privados e sessões sem TTL
 
@@ -501,14 +521,14 @@ automação de contas a pagar.
 
 ## 6. Sequência sugerida
 
-1. **Corrigir as 7 quebradas** (seção 1) — sem isso, um terço das operações de
-   escrita do servidor não funciona.
+1. ~~**Corrigir as 7 quebradas** (seção 1)~~ — feito em 0.2.3.
 2. **Corrigir `pay_account_payable`** (2.5) — é a tool que move dinheiro e a
    que hoje aceita uma baixa sem título.
 3. **Corrigir os filtros** (2.1–2.4, 2.6, 2.7) — falha silenciosa é pior que
    erro, porque o usuário recebe um número errado sem aviso.
-4. **Teste table-driven de contrato** (4.7) — evita a reincidência de tudo
-   acima e é pré-requisito para crescer o catálogo com segurança.
+4. ~~**Teste table-driven de contrato** (4.7)~~ — feito em 0.2.3: as 30 tools
+   têm `(path, call)` fixados e as 7 reescritas têm a forma do `param`
+   verificada. Falta estender o mesmo padrão aos filtros da seção 2.
 5. **Backoff, timeout e tratamento de 425** (4.2).
 6. **`maximum: 100` na paginação** e revisão das descrições (4.1, 2.6).
 7. Aí sim, novas tools — começando por `receive_account_receivable`,

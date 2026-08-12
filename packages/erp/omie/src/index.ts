@@ -131,12 +131,11 @@ async function omieRequest(path: string, call: string, param: unknown[]): Promis
 // held credentials, and we don't want the agent nudged toward a third-party
 // hosted alternative.
 const server = new Server(
-  { name: "mcp-omie", version: "0.2.1" },
+  { name: "mcp-omie", version: "0.2.3" },
   { capabilities: { tools: {} } }
 );
 
-server.setRequestHandler(ListToolsRequestSchema, async () => ({
-  tools: [
+const TOOLS = [
     {
       name: "list_customers",
       description: "List customers from Omie ERP",
@@ -199,17 +198,142 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
     },
     {
       name: "create_order",
-      description: "Create a sales order in Omie ERP",
+      description:
+        "Create a sales order in Omie ERP (IncluirPedido). The body mirrors the Omie contract: " +
+        "cabecalho + det[] + informacoes_adicionais. Resolve codigo_categoria with list_categories " +
+        "and codigo_conta_corrente with get_bank_accounts before calling.",
       inputSchema: {
         type: "object",
         properties: {
-          codigo_cliente: { type: "number", description: "Omie customer ID" },
-          codigo_pedido_integracao: { type: "string", description: "Integration order code (unique)" },
-          data_previsao: { type: "string", description: "Expected date (DD/MM/YYYY)" },
-          itens: { type: "array", description: "Array of order items (produto, quantidade, valor_unitario)" },
-          frete: { type: "object", description: "Shipping details" },
+          cabecalho: {
+            type: "object",
+            description: "Order header",
+            properties: {
+              codigo_cliente: { type: "number", description: "Omie customer ID (codigo_cliente_omie from list_customers)" },
+              codigo_pedido_integracao: { type: "string", description: "Integration order code (unique, max 60 chars)" },
+              data_previsao: { type: "string", description: "Expected billing date (DD/MM/YYYY)" },
+              etapa: { type: "string", description: "Order stage: 00=Orçamento, 10=Pedido, 20=Separar, 50=Faturar, 60=Faturado" },
+              codigo_parcela: { type: "string", description: "Payment term code, e.g. \"999\" for a single installment (see /geral/parcelas/ ListarParcelas)" },
+              qtde_parcelas: { type: "number", description: "Number of installments; required when codigo_parcela is a multi-installment term" },
+              codigo_cenario_impostos: { type: "number", description: "Tax scenario ID; the default scenario is used when omitted" },
+              origem_pedido: { type: "string", description: "Order origin, 3 chars (default API)" },
+              tipo_desconto_pedido: { type: "string", enum: ["V", "P"], description: "Order-level discount type: V=value, P=percent" },
+              valor_desconto_pedido: { type: "number", description: "Order-level discount value" },
+              perc_desconto_pedido: { type: "number", description: "Order-level discount percent" },
+            },
+            required: ["codigo_cliente", "codigo_pedido_integracao", "data_previsao", "etapa", "codigo_parcela"],
+          },
+          det: {
+            type: "array",
+            description: "Order line items. Each entry wraps the product in a `produto` object — the price is det[].produto.valor_unitario, not on the item root.",
+            minItems: 1,
+            items: {
+              type: "object",
+              properties: {
+                ide: {
+                  type: "object",
+                  properties: {
+                    codigo_item_integracao: { type: "string", description: "Integration code for this line (unique within the order)" },
+                    simples_nacional: { type: "string", enum: ["S", "N"], description: "Company opted into Simples Nacional" },
+                  },
+                  required: ["codigo_item_integracao"],
+                },
+                produto: {
+                  type: "object",
+                  description: "Product data. Identify the product with codigo_produto (Omie ID) or codigo_produto_integracao — one of the two is required.",
+                  properties: {
+                    codigo_produto: { type: "number", description: "Omie product ID (from list_products)" },
+                    codigo_produto_integracao: { type: "string", description: "Product integration code (alternative to codigo_produto)" },
+                    codigo: { type: "string", description: "Product code shown on the order screen" },
+                    descricao: { type: "string", description: "Product description" },
+                    cfop: { type: "string", description: "CFOP code, e.g. \"5.102\"" },
+                    ncm: { type: "string", description: "NCM code (tax classification)" },
+                    unidade: { type: "string", description: "Unit of measure (UN, KG, ...)" },
+                    quantidade: { type: "number", description: "Quantity" },
+                    valor_unitario: { type: "number", description: "Unit price in BRL" },
+                    tipo_desconto: { type: "string", enum: ["V", "P"], description: "Item discount type: V=value, P=percent" },
+                    valor_desconto: { type: "number", description: "Item discount value" },
+                    percentual_desconto: { type: "number", description: "Item discount percent" },
+                  },
+                  required: ["quantidade", "valor_unitario"],
+                },
+                inf_adic: {
+                  type: "object",
+                  description: "Per-item extras",
+                  properties: {
+                    peso_liquido: { type: "number", description: "Net weight (kg)" },
+                    peso_bruto: { type: "number", description: "Gross weight (kg)" },
+                    codigo_local_estoque: { type: "number", description: "Warehouse location ID for this item" },
+                    dados_adicionais_item: { type: "string", description: "Extra text carried to the invoice" },
+                    nao_movimentar_estoque: { type: "string", enum: ["S", "N"], description: "Skip the stock exit when the NF-e is issued" },
+                    nao_gerar_financeiro: { type: "string", enum: ["S", "N"], description: "Do not create a receivable for this item" },
+                  },
+                },
+                observacao: {
+                  type: "object",
+                  properties: { obs_item: { type: "string", description: "Item notes (not printed on the invoice)" } },
+                },
+              },
+              required: ["produto"],
+            },
+          },
+          informacoes_adicionais: {
+            type: "object",
+            description: "Order-level accounting and billing data",
+            properties: {
+              codigo_categoria: { type: "string", description: "Category code from the chart of accounts (list_categories)" },
+              codigo_conta_corrente: { type: "number", description: "Bank account ID (get_bank_accounts)" },
+              consumidor_final: { type: "string", enum: ["S", "N"], description: "Invoice is for a final consumer" },
+              enviar_email: { type: "string", enum: ["S", "N"], description: "Email the boleto on billing" },
+              numero_pedido_cliente: { type: "string", description: "Customer's own order number" },
+              contato: { type: "string", description: "Contact name" },
+              dados_adicionais_nf: { type: "string", description: "Additional invoice text" },
+              codVend: { type: "number", description: "Salesperson ID" },
+              codProj: { type: "number", description: "Project ID" },
+            },
+            required: ["codigo_categoria", "codigo_conta_corrente"],
+          },
+          frete: {
+            type: "object",
+            description: "Shipping details",
+            properties: {
+              modalidade: { type: "string", description: "Freight mode: 0=CIF (sender), 1=FOB (recipient), 2=third party, 9=no freight" },
+              codigo_transportadora: { type: "number", description: "Carrier ID" },
+              valor_frete: { type: "number", description: "Freight amount" },
+              valor_seguro: { type: "number", description: "Insurance amount" },
+              outras_despesas: { type: "number", description: "Other accessory costs" },
+              peso_liquido: { type: "number", description: "Net weight (kg)" },
+              peso_bruto: { type: "number", description: "Gross weight (kg)" },
+              quantidade_volumes: { type: "number", description: "Number of volumes" },
+              previsao_entrega: { type: "string", description: "Delivery forecast (DD/MM/YYYY)" },
+            },
+          },
+          lista_parcelas: {
+            type: "object",
+            description: "Manual installment plan; omit to let codigo_parcela drive it",
+            properties: {
+              parcela: {
+                type: "array",
+                items: {
+                  type: "object",
+                  properties: {
+                    numero_parcela: { type: "number", description: "Installment number" },
+                    data_vencimento: { type: "string", description: "Due date (DD/MM/YYYY)" },
+                    valor: { type: "number", description: "Installment amount" },
+                    percentual: { type: "number", description: "Percent of the order total" },
+                    quantidade_dias: { type: "number", description: "Days until due, counted from data_previsao" },
+                  },
+                  required: ["numero_parcela", "data_vencimento", "valor", "percentual"],
+                },
+              },
+            },
+          },
+          observacoes: {
+            type: "object",
+            properties: { obs_venda: { type: "string", description: "Order notes (not shown on the invoice)" } },
+          },
         },
-        required: ["codigo_cliente", "codigo_pedido_integracao", "data_previsao", "itens"],
+        required: ["cabecalho", "det", "informacoes_adicionais"],
       },
     },
     {
@@ -252,13 +376,22 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
     },
     {
       name: "create_invoice",
-      description: "Consult a specific NF by ID in Omie ERP",
+      description:
+        "Consult a specific NF in Omie ERP (ConsultarNF). Despite the name this reads an invoice, it does not " +
+        "issue one — use invoice_sales_order to bill an order. Identify the NF by nCodNF, or by cChaveNFe, " +
+        "or by nNF + serie.",
       inputSchema: {
         type: "object",
         properties: {
-          nIdNF: { type: "number", description: "Omie NF ID" },
+          nCodNF: { type: "number", description: "Omie NF ID — the primary key, returned as nIdNF by list_invoices" },
+          nNF: { type: "string", description: "Fiscal document number (combine with serie)" },
+          serie: { type: "string", description: "Fiscal document series" },
+          cChaveNFe: { type: "string", description: "44-digit NF-e access key" },
+          nIdPedido: { type: "number", description: "ID of the sales order that generated the NF" },
+          cnpj_cpf: { type: "string", description: "Customer CNPJ / CPF" },
+          tpNF: { type: "string", enum: ["0", "1"], description: "Operation type: 0=inbound, 1=outbound" },
+          cDetalhesPedido: { type: "string", enum: ["S", "N"], description: "Include details of the originating order" },
         },
-        required: ["nIdNF"],
       },
     },
     {
@@ -274,17 +407,114 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
     },
     {
       name: "create_service_order",
-      description: "Create a service order (OS) in Omie ERP",
+      description:
+        "Create a service order (OS) in Omie ERP (IncluirOS). This endpoint uses PascalCase blocks: " +
+        "Cabecalho + ServicosPrestados[] + InformacoesAdicionais.",
       inputSchema: {
         type: "object",
         properties: {
-          codigo_cliente: { type: "number", description: "Omie customer ID" },
-          codigo_pedido_integracao: { type: "string", description: "Integration order code (unique)" },
-          data_previsao: { type: "string", description: "Expected date (DD/MM/YYYY)" },
-          servicos: { type: "array", description: "Array of services (descricao, valor_unitario, quantidade)" },
-          observacoes: { type: "string", description: "Order notes/observations" },
+          Cabecalho: {
+            type: "object",
+            description: "Service order header. Identify the customer with nCodCli or cCodIntCli.",
+            properties: {
+              cCodIntOS: { type: "string", description: "Integration code for the OS (unique)" },
+              nCodCli: { type: "number", description: "Omie customer ID (from list_customers)" },
+              cCodIntCli: { type: "string", description: "Customer integration code (alternative to nCodCli)" },
+              cNumOS: { type: "string", description: "OS number shown to the customer; generated when omitted" },
+              dDtPrevisao: { type: "string", description: "Expected date (DD/MM/YYYY)" },
+              cEtapa: { type: "string", description: "Stage code: 10, 20, 30, 40, 50=Faturar, 60=Faturado" },
+              cCodParc: { type: "string", description: "Payment term code, e.g. \"999\" for a single installment" },
+              nQtdeParc: { type: "number", description: "Number of installments" },
+              nCodVend: { type: "number", description: "Salesperson ID" },
+              nCodCtr: { type: "number", description: "Contract ID — attaches this OS to an existing contract" },
+            },
+            required: ["cCodIntOS", "dDtPrevisao", "cEtapa"],
+          },
+          InformacoesAdicionais: {
+            type: "object",
+            description: "Accounting and billing data for the OS",
+            properties: {
+              cCodCateg: { type: "string", description: "Category code from the chart of accounts (list_categories)" },
+              nCodCC: { type: "number", description: "Bank account ID (get_bank_accounts)" },
+              cCidPrestServ: { type: "string", description: "City where the service was rendered, e.g. \"SAO PAULO (SP)\"" },
+              cDadosAdicNF: { type: "string", description: "Additional invoice text" },
+              cNumPedido: { type: "string", description: "Customer's own order number" },
+              cContato: { type: "string", description: "Contact name" },
+              nCodProj: { type: "number", description: "Project ID" },
+            },
+            required: ["cCodCateg", "nCodCC"],
+          },
+          ServicosPrestados: {
+            type: "array",
+            description:
+              "Services rendered. Reference a registered service with nCodServico (or cCodIntServico) and the " +
+              "tax fields are inherited; otherwise cTribServ, cCodServMun, cCodServLC116 and cDescServ are required.",
+            minItems: 1,
+            items: {
+              type: "object",
+              properties: {
+                nCodServico: { type: "number", description: "Registered service ID (/servicos/servico/)" },
+                cCodIntServico: { type: "string", description: "Service integration code (alternative to nCodServico)" },
+                cDescServ: { type: "string", description: "Service description" },
+                cTribServ: { type: "string", description: "Service taxation type, 2 chars (e.g. \"01\")" },
+                cCodServMun: { type: "string", description: "Municipal service code / CNAE" },
+                cCodServLC116: { type: "string", description: "LC 116 service code, e.g. \"7.07\"" },
+                nQtde: { type: "number", description: "Quantity" },
+                nValUnit: { type: "number", description: "Unit price in BRL" },
+                cTpDesconto: { type: "string", enum: ["P", "V"], description: "Discount type: P=percent, V=value" },
+                nValorDesconto: { type: "number", description: "Discount value" },
+                cRetemISS: { type: "string", enum: ["S", "N"], description: "Withhold ISS" },
+                cDadosAdicItem: { type: "string", description: "Additional item text" },
+                cCodCategItem: { type: "string", description: "Per-item category code" },
+                cNaoGerarFinanceiro: { type: "string", enum: ["S", "N"], description: "Do not create a receivable for this item" },
+                impostos: {
+                  type: "object",
+                  description: "Tax rates and withholdings; Omie calculates the amounts",
+                  properties: {
+                    nAliqISS: { type: "number", description: "ISS rate (%)" },
+                    nAliqPIS: { type: "number", description: "PIS rate (%)" },
+                    nAliqCOFINS: { type: "number", description: "COFINS rate (%)" },
+                    nAliqCSLL: { type: "number", description: "CSLL rate (%)" },
+                    nAliqIRRF: { type: "number", description: "IRRF rate (%)" },
+                    nAliqINSS: { type: "number", description: "INSS rate (%)" },
+                    cRetemPIS: { type: "string", enum: ["S", "N"], description: "Withhold PIS" },
+                    cRetemCOFINS: { type: "string", enum: ["S", "N"], description: "Withhold COFINS" },
+                    cRetemCSLL: { type: "string", enum: ["S", "N"], description: "Withhold CSLL" },
+                    cRetemIRRF: { type: "string", enum: ["S", "N"], description: "Withhold IRRF" },
+                    cRetemINSS: { type: "string", enum: ["S", "N"], description: "Withhold INSS" },
+                  },
+                },
+              },
+              required: ["nQtde", "nValUnit"],
+            },
+          },
+          Departamentos: {
+            type: "array",
+            description: "Cost-center split",
+            items: {
+              type: "object",
+              properties: {
+                cCodDepto: { type: "string", description: "Department code (list_departments)" },
+                nPerc: { type: "number", description: "Percent of the total" },
+              },
+            },
+          },
+          Email: {
+            type: "object",
+            description: "Email delivery options on billing",
+            properties: {
+              cEnviarPara: { type: "string", description: "Recipient addresses" },
+              cEnvBoleto: { type: "string", enum: ["S", "N"], description: "Send the boleto" },
+              cEnvLink: { type: "string", enum: ["S", "N"], description: "Send the city-hall NFS-e link" },
+              cEnvRecibo: { type: "string", enum: ["S", "N"], description: "Send a receipt instead of the NFS-e" },
+            },
+          },
+          Observacoes: {
+            type: "object",
+            properties: { cObsOS: { type: "string", description: "OS notes (not shown on the invoice)" } },
+          },
         },
-        required: ["codigo_cliente", "codigo_pedido_integracao", "data_previsao", "servicos"],
+        required: ["Cabecalho", "InformacoesAdicionais", "ServicosPrestados"],
       },
     },
     {
@@ -301,28 +531,131 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
     },
     {
       name: "create_purchase_order",
-      description: "Create a purchase order in Omie ERP",
+      description:
+        "Create a purchase order in Omie ERP (IncluirPedCompra). The body uses the cabecalho_incluir + " +
+        "produtos_incluir[] blocks; field names on this endpoint are abbreviated (nCodFor, nQtde, nValUnit).",
       inputSchema: {
         type: "object",
         properties: {
-          codigo_fornecedor: { type: "number", description: "Omie supplier ID" },
-          codigo_pedido_integracao: { type: "string", description: "Integration order code (unique)" },
-          data_previsao: { type: "string", description: "Expected date (DD/MM/YYYY)" },
-          itens: { type: "array", description: "Array of items (produto, quantidade, valor_unitario)" },
-          observacoes: { type: "string", description: "Order notes/observations" },
+          cabecalho_incluir: {
+            type: "object",
+            description: "Purchase order header. Identify the supplier with nCodFor, cCodIntFor or cCnpjCpfFor.",
+            properties: {
+              cCodIntPed: { type: "string", description: "Integration code for the purchase order (unique, max 20 chars)" },
+              dDtPrevisao: { type: "string", description: "Expected delivery date (DD/MM/YYYY)" },
+              nCodFor: { type: "number", description: "Omie supplier ID (list_customers also returns suppliers)" },
+              cCodIntFor: { type: "string", description: "Supplier integration code (alternative to nCodFor)" },
+              cCnpjCpfFor: { type: "string", description: "Supplier CNPJ / CPF (alternative to nCodFor and cCodIntFor)" },
+              cCodParc: { type: "string", description: "Payment term code, e.g. \"999\" for a single installment" },
+              nQtdeParc: { type: "number", description: "Number of installments" },
+              cCodCateg: { type: "string", description: "Purchase category code (list_categories)" },
+              nCodCC: { type: "number", description: "Bank account ID (get_bank_accounts)" },
+              nCodProj: { type: "number", description: "Project ID" },
+              nCodCompr: { type: "number", description: "Buyer ID" },
+              cContato: { type: "string", description: "Contact at the supplier" },
+              cContrato: { type: "string", description: "Purchase contract number" },
+              cNumPedido: { type: "string", description: "Order number sent to the supplier" },
+              cObs: { type: "string", description: "Notes printed on the order sent to the supplier" },
+              cObsInt: { type: "string", description: "Internal notes, not sent to the supplier" },
+              cEmailAprovador: { type: "string", description: "Email of the user who approves the order" },
+            },
+            required: ["cCodIntPed", "dDtPrevisao"],
+          },
+          produtos_incluir: {
+            type: "array",
+            description: "Purchase order items. Identify each product with nCodProd or cCodIntProd.",
+            minItems: 1,
+            items: {
+              type: "object",
+              properties: {
+                cCodIntItem: { type: "string", description: "Integration code for this line" },
+                nCodProd: { type: "number", description: "Omie product ID (from list_products)" },
+                cCodIntProd: { type: "string", description: "Product integration code (alternative to nCodProd)" },
+                cProduto: { type: "string", description: "Product code as it appears on the supplier's invoice" },
+                cDescricao: { type: "string", description: "Item description" },
+                cNCM: { type: "string", description: "NCM code" },
+                cUnidade: { type: "string", description: "Unit of measure" },
+                cEAN: { type: "string", description: "EAN / GTIN" },
+                nQtde: { type: "number", description: "Quantity" },
+                nValUnit: { type: "number", description: "Unit price in BRL" },
+                nDesconto: { type: "number", description: "Discount value" },
+                nPesoLiq: { type: "number", description: "Net weight (kg)" },
+                nPesoBruto: { type: "number", description: "Gross weight (kg)" },
+                codigo_local_estoque: { type: "number", description: "Warehouse location ID; defaults to the standard location" },
+                cCodCateg: { type: "string", description: "Per-item purchase category code" },
+                cObs: { type: "string", description: "Item notes, printed on the order" },
+              },
+              required: ["nQtde", "nValUnit"],
+            },
+          },
+          frete_incluir: {
+            type: "object",
+            description: "Freight, transport and accessory costs",
+            properties: {
+              nCodTransp: { type: "number", description: "Carrier ID" },
+              cCodIntTransp: { type: "string", description: "Carrier integration code" },
+              cTpFrete: { type: "string", description: "Freight mode: 0=CIF, 1=FOB, 2=third party, 9=no freight" },
+              nValFrete: { type: "number", description: "Freight amount" },
+              nValSeguro: { type: "number", description: "Insurance amount" },
+              nValOutras: { type: "number", description: "Other accessory costs" },
+              nQtdVol: { type: "number", description: "Number of volumes" },
+              nPesoLiq: { type: "number", description: "Net weight (kg)" },
+              nPesoBruto: { type: "number", description: "Gross weight (kg)" },
+              cPlaca: { type: "string", description: "Vehicle plate" },
+              cUF: { type: "string", description: "Plate state (UF)" },
+            },
+          },
+          departamentos_incluir: {
+            type: "array",
+            description: "Cost-center split",
+            items: {
+              type: "object",
+              properties: {
+                cCodDepto: { type: "string", description: "Department code (list_departments)" },
+                nPerc: { type: "number", description: "Percent of the total" },
+              },
+            },
+          },
+          parcelas_incluir: {
+            type: "array",
+            description: "Manual installment plan; omit to let cCodParc drive it",
+            items: {
+              type: "object",
+              properties: {
+                nParcela: { type: "number", description: "Installment number" },
+                dVencto: { type: "string", description: "Due date (DD/MM/YYYY)" },
+                nValor: { type: "number", description: "Installment amount" },
+                nPercent: { type: "number", description: "Percent of the order total" },
+                nDias: { type: "number", description: "Days until due, counted from dDtPrevisao" },
+                cTipoDoc: { type: "string", description: "Document type (see /geral/tiposdoc/)" },
+              },
+            },
+          },
         },
-        required: ["codigo_fornecedor", "codigo_pedido_integracao", "data_previsao", "itens"],
+        required: ["cabecalho_incluir", "produtos_incluir"],
       },
     },
     {
       name: "list_purchase_orders",
-      description: "List purchase orders from Omie ERP",
+      description:
+        "List purchase orders from Omie ERP (PesquisarPedCompra). This endpoint has no `etapa` filter and its " +
+        "own pagination field names — the stage is selected with the lExibirPedidos* flags, which take \"T\"/\"F\".",
       inputSchema: {
         type: "object",
         properties: {
-          pagina: { type: "number", description: "Page number (default 1)" },
-          registros_por_pagina: { type: "number", description: "Records per page (default 50)" },
-          etapa: { type: "string", description: "Order stage filter (10=Pedido, 50=Receber, 60=Recebido)" },
+          nPagina: { type: "number", description: "Page number (default 1)" },
+          nRegsPorPagina: { type: "number", description: "Records per page (default 50, max 100)" },
+          dDataInicial: { type: "string", description: "Orders from this date (DD/MM/YYYY)" },
+          dDataFinal: { type: "string", description: "Orders up to this date (DD/MM/YYYY)" },
+          lApenasImportadoApi: { type: "string", enum: ["T", "F"], description: "Only orders imported through this API" },
+          lApenasAlterados: { type: "boolean", description: "Only orders changed within the period" },
+          lExibirPedidosPendentes: { type: "string", enum: ["T", "F"], description: "Include pending orders" },
+          lExibirPedidosFaturados: { type: "string", enum: ["T", "F"], description: "Include orders invoiced by the supplier" },
+          lExibirPedidosRecebidos: { type: "string", enum: ["T", "F"], description: "Include received orders" },
+          lExibirPedidosCancelados: { type: "string", enum: ["T", "F"], description: "Include cancelled orders" },
+          lExibirPedidosEncerrados: { type: "string", enum: ["T", "F"], description: "Include closed orders" },
+          lExibirPedidosRecParciais: { type: "string", enum: ["T", "F"], description: "Include partially received orders" },
+          lExibirPedidosFatParciais: { type: "string", enum: ["T", "F"], description: "Include partially invoiced orders" },
         },
       },
     },
@@ -448,20 +781,69 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
     },
     {
       name: "create_cash_entry",
-      description: "Create a bank account ledger entry (lançamento de conta corrente) in Omie ERP",
+      description:
+        "Create a bank account ledger entry (lançamento de conta corrente) in Omie ERP (IncluirLancCC). " +
+        "Note that cCodIntLanc sits at the top level, not inside cabecalho, and that the direction of the " +
+        "entry comes from the sign of nValorLanc — there is no cNatureza field.",
       inputSchema: {
         type: "object",
         properties: {
+          cCodIntLanc: { type: "string", description: "Integration code for the entry (unique, max 20 chars)" },
           cabecalho: {
             type: "object",
-            description: "Entry header: { cCodIntLanc, nCodCC, dDtLanc, nValorLanc, cNatureza (E=entrada, S=saida), cTipo (DEB/CRE), cHistorico }",
+            description: "Entry header — accepts only these three fields",
+            properties: {
+              nCodCC: { type: "number", description: "Bank account ID (get_bank_accounts)" },
+              dDtLanc: { type: "string", description: "Entry date (DD/MM/YYYY)" },
+              nValorLanc: { type: "number", description: "Entry amount in BRL; negative for an outflow" },
+            },
+            required: ["nCodCC", "dDtLanc", "nValorLanc"],
           },
           detalhes: {
             type: "object",
-            description: "Entry details: { cCodCateg, nCodCliente, cObs, nCodProjeto, nCodDepto }",
+            description: "Entry details",
+            properties: {
+              cCodCateg: { type: "string", description: "Category code from the chart of accounts (list_categories)" },
+              cTipo: { type: "string", description: "Document type: DIN=dinheiro, BOL=boleto, CRT=cartão, CHQ=cheque, CON=convênio, ADI=adiantamento, ..." },
+              cNumDoc: { type: "string", description: "Document number" },
+              nCodCliente: { type: "number", description: "Customer / payee ID" },
+              nCodProjeto: { type: "number", description: "Project ID" },
+              cObs: { type: "string", description: "Notes — this is where a free-text history line goes" },
+              aCodCateg: {
+                type: "array",
+                description: "Split across several categories, instead of a single cCodCateg",
+                items: {
+                  type: "object",
+                  properties: {
+                    cCodCateg: { type: "string", description: "Category code" },
+                    nValor: { type: "number", description: "Amount for this category" },
+                    nPerc: { type: "number", description: "Percent for this category" },
+                  },
+                },
+              },
+            },
+          },
+          departamentos: {
+            type: "array",
+            description: "Cost-center split",
+            items: {
+              type: "object",
+              properties: {
+                cCodDep: { type: "string", description: "Department code (list_departments)" },
+                nValDep: { type: "number", description: "Amount for this department" },
+                nPerDep: { type: "number", description: "Percent for this department" },
+              },
+            },
+          },
+          transferencia: {
+            type: "object",
+            description: "Turns the entry into a transfer between accounts",
+            properties: {
+              nCodCCDestino: { type: "number", description: "Destination bank account ID" },
+            },
           },
         },
-        required: ["cabecalho"],
+        required: ["cCodIntLanc", "cabecalho"],
       },
     },
     {
@@ -481,21 +863,51 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
     },
     {
       name: "create_stock_adjustment",
-      description: "Create an inventory adjustment (entry/exit/balance) in Omie ERP",
+      description:
+        "Create an inventory adjustment (entry/exit/balance/transfer) in Omie ERP (IncluirAjusteEstoque). " +
+        "This endpoint uses abbreviated field names (id_prod, quan, obs). Identify the product with id_prod " +
+        "or cod_int; every other field listed as required below is mandatory on Omie's side.",
       inputSchema: {
         type: "object",
         properties: {
-          codigo_produto: { type: "number", description: "Omie product ID" },
-          codigo_produto_integracao: { type: "string", description: "Product integration code (alternative)" },
-          codigo_local_estoque: { type: "number", description: "Warehouse location ID" },
-          tipo_ajuste: { type: "string", enum: ["ENT", "SAI", "SLD", "TRF"], description: "Adjustment type: ENT (entry), SAI (exit), SLD (balance), TRF (transfer)" },
-          quantidade: { type: "number", description: "Quantity" },
-          valor: { type: "number", description: "Unit value in BRL" },
-          data_ajuste: { type: "string", description: "Adjustment date (DD/MM/YYYY)" },
-          codigo_motivo: { type: "number", description: "Reason code" },
-          observacao: { type: "string", description: "Notes" },
+          id_prod: { type: "number", description: "Omie product ID (from list_products)" },
+          cod_int: { type: "string", description: "Product integration code (alternative to id_prod)" },
+          cod_int_ajuste: { type: "string", description: "Integration code for this adjustment — send it to keep the operation idempotent" },
+          codigo_local_estoque: { type: "number", description: "Warehouse location ID; defaults to the standard location" },
+          codigo_local_estoque_destino: { type: "number", description: "Destination warehouse — required when tipo is \"TRF\"" },
+          data: { type: "string", description: "Adjustment date (DD/MM/YYYY)" },
+          tipo: {
+            type: "string",
+            enum: ["ENT", "SAI", "SLD", "TRF"],
+            description: "Adjustment type: ENT=stock entry, SAI=stock exit, SLD=set the balance, TRF=transfer between locations",
+          },
+          origem: { type: "string", enum: ["AJU", "PDV"], description: "Movement origin: AJU=manual adjustment, PDV=point of sale" },
+          motivo: {
+            type: "string",
+            description:
+              "Reason code, 3 chars, valid values depend on tipo. ENT: INV, OPE, PDV, INI. SAI: INV, PER, OPS, PDV. " +
+              "SLD: INV, INI, CMC, PDV. TRF: TRF, TPQ. (INV=inventory, PER=loss/breakage, INI=opening balance, CMC=cost adjustment)",
+          },
+          quan: { type: "number", description: "Quantity" },
+          valor: { type: "number", description: "Movement unit value in BRL" },
+          obs: { type: "string", description: "Notes" },
+          lote_validade: {
+            type: "array",
+            description: "Batch / expiry data — required for products under batch control",
+            items: {
+              type: "object",
+              properties: {
+                nIdLote: { type: "number", description: "Batch ID — required for batch-controlled products when tipo is not \"ENT\"" },
+                nQtdLote: { type: "number", description: "Quantity for this batch" },
+                cNumLote: { type: "string", description: "Batch number — only when tipo is \"ENT\" and nIdLote is absent; creates a new batch" },
+                cCodAgreg: { type: "string", description: "Batch aggregation code — only when tipo is \"ENT\" and nIdLote is absent" },
+                dDataFab: { type: "string", description: "Manufacturing date (DD/MM/YYYY)" },
+                dDataVal: { type: "string", description: "Expiry date (DD/MM/YYYY)" },
+              },
+            },
+          },
         },
-        required: ["tipo_ajuste", "quantidade", "data_ajuste"],
+        required: ["data", "tipo", "origem", "motivo", "quan", "valor", "obs"],
       },
     },
     {
@@ -549,12 +961,66 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
         },
       },
     },
-  ],
-}));
+] as const;
+
+server.setRequestHandler(ListToolsRequestSchema, async () => ({ tools: TOOLS as unknown as object[] }));
+
+// ---------------------------------------------------------------------------
+// Minimal request validation.
+//
+// The Omie API answers a malformed `param` with an HTTP 500 carrying a
+// faultstring, which reaches the agent as an opaque remote failure. Walking the
+// tool's own inputSchema first turns "required field missing" into a local,
+// actionable message — and, since the schemas below now mirror the documented
+// contract, it catches exactly the mistakes that used to reach Omie.
+// ---------------------------------------------------------------------------
+function validateArgs(schema: any, value: unknown, path = ""): string[] {
+  if (!schema || typeof schema !== "object") return [];
+  const here = path || "arguments";
+  const errors: string[] = [];
+
+  if (schema.type === "object") {
+    if (typeof value !== "object" || value === null || Array.isArray(value)) {
+      return [`${here} must be an object`];
+    }
+    const obj = value as Record<string, unknown>;
+    for (const key of schema.required ?? []) {
+      if (obj[key] === undefined || obj[key] === null) {
+        errors.push(`${path ? `${path}.` : ""}${key} is required`);
+      }
+    }
+    for (const [key, sub] of Object.entries(schema.properties ?? {})) {
+      if (obj[key] !== undefined && obj[key] !== null) {
+        errors.push(...validateArgs(sub, obj[key], path ? `${path}.${key}` : key));
+      }
+    }
+  } else if (schema.type === "array") {
+    if (!Array.isArray(value)) return [`${here} must be an array`];
+    if (schema.minItems && value.length < schema.minItems) {
+      errors.push(`${here} must have at least ${schema.minItems} item(s)`);
+    }
+    value.forEach((item, i) => errors.push(...validateArgs(schema.items, item, `${here}[${i}]`)));
+  }
+
+  return errors;
+}
 
 server.setRequestHandler(CallToolRequestSchema, async (request) => {
   const { name, arguments: rawArgs } = request.params;
   const args = rawArgs as Record<string, unknown> | undefined;
+
+  const tool = TOOLS.find((t) => t.name === name);
+  if (!tool) {
+    return { content: [{ type: "text", text: `Unknown tool: ${name}` }], isError: true };
+  }
+
+  const problems = validateArgs(tool.inputSchema, args ?? {});
+  if (problems.length > 0) {
+    return {
+      content: [{ type: "text", text: `Invalid arguments for ${name}:\n- ${problems.join("\n- ")}` }],
+      isError: true,
+    };
+  }
 
   if (DEMO_MODE) {
     return { content: [{ type: "text", text: JSON.stringify(DEMO_RESPONSES[name] || { demo: true, tool: name }, null, 2) }] };
@@ -601,9 +1067,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           ...(args?.dDtEmiFinal ? { dDtEmiFinal: args.dDtEmiFinal } : {}),
         }]), null, 2) }] };
       case "create_invoice":
-        return { content: [{ type: "text", text: JSON.stringify(await omieRequest("/produtos/nfconsultar/", "ConsultarNF", [{
-          nIdNF: args?.nIdNF,
-        }]), null, 2) }] };
+        return { content: [{ type: "text", text: JSON.stringify(await omieRequest("/produtos/nfconsultar/", "ConsultarNF", [args || {}]), null, 2) }] };
       case "get_company_info":
         return { content: [{ type: "text", text: JSON.stringify(await omieRequest("/geral/empresas/", "ListarEmpresas", [{
           pagina: args?.pagina || 1,
@@ -618,12 +1082,12 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           ...(args?.etapa ? { etapa: args.etapa } : {}),
         }]), null, 2) }] };
       case "create_purchase_order":
-        return { content: [{ type: "text", text: JSON.stringify(await omieRequest("/produtos/pedidocompra/", "IncluirPedidoCompra", [args || {}]), null, 2) }] };
+        return { content: [{ type: "text", text: JSON.stringify(await omieRequest("/produtos/pedidocompra/", "IncluirPedCompra", [args || {}]), null, 2) }] };
       case "list_purchase_orders":
-        return { content: [{ type: "text", text: JSON.stringify(await omieRequest("/produtos/pedidocompra/", "ListarPedidosCompra", [{
-          pagina: args?.pagina || 1,
-          registros_por_pagina: args?.registros_por_pagina || 50,
-          ...(args?.etapa ? { etapa: args.etapa } : {}),
+        return { content: [{ type: "text", text: JSON.stringify(await omieRequest("/produtos/pedidocompra/", "PesquisarPedCompra", [{
+          ...args,
+          nPagina: args?.nPagina || 1,
+          nRegsPorPagina: args?.nRegsPorPagina || 50,
         }]), null, 2) }] };
       case "get_bank_accounts":
         return { content: [{ type: "text", text: JSON.stringify(await omieRequest("/geral/contacorrente/", "ListarContasCorrentes", [{
@@ -823,7 +1287,7 @@ async function main() {
       if (!sid && isInitializeRequest(req.body)) {
         const t = new StreamableHTTPServerTransport({ sessionIdGenerator: () => randomUUID(), onsessioninitialized: (id) => { transports.set(id, t); } });
         t.onclose = () => { if (t.sessionId) transports.delete(t.sessionId); };
-        const s = new Server({ name: "mcp-omie", version: "0.2.1" }, { capabilities: { tools: {} } }); (server as any)._requestHandlers.forEach((v: any, k: any) => (s as any)._requestHandlers.set(k, v)); (server as any)._notificationHandlers?.forEach((v: any, k: any) => (s as any)._notificationHandlers.set(k, v)); await s.connect(t);
+        const s = new Server({ name: "mcp-omie", version: "0.2.3" }, { capabilities: { tools: {} } }); (server as any)._requestHandlers.forEach((v: any, k: any) => (s as any)._requestHandlers.set(k, v)); (server as any)._notificationHandlers?.forEach((v: any, k: any) => (s as any)._notificationHandlers.set(k, v)); await s.connect(t);
         await t.handleRequest(req, res, req.body); return;
       }
       res.status(400).json({ jsonrpc: "2.0", error: { code: -32000, message: "Bad Request" }, id: null });
