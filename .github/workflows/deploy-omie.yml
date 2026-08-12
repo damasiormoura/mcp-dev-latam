@@ -1,0 +1,57 @@
+name: Deploy mcp-omie
+
+# Deploys the Omie MCP server to the LXC that runs it, on every merge to main
+# that touches the package. Runs on the self-hosted runner in the runner LXC,
+# which reaches the target over SSH with a key restricted to the deploy script
+# (see command="..." in the target's authorized_keys) — the runner cannot get a
+# shell on the target, only trigger a deploy.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "packages/erp/omie/**"
+      - ".github/workflows/deploy-omie.yml"
+  workflow_dispatch: {} # manual redeploy / rollback trigger
+
+# Never let two deploys overlap: the target rebuilds and swaps one container.
+concurrency:
+  group: deploy-mcp-omie
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: [self-hosted, mcp-omie]
+    timeout-minutes: 15
+    steps:
+      - name: Deploy over SSH
+        # The target's authorized_keys pins this key to /opt/mcp-omie/deploy.sh,
+        # so the command sent here is ignored — `true` is a placeholder that
+        # documents that nothing arbitrary is being requested. The script pulls
+        # origin/main itself, rebuilds the image, swaps the container, waits on
+        # /health, and rolls back to the previous image if the check fails.
+        run: |
+          ssh -o StrictHostKeyChecking=accept-new \
+              -o BatchMode=yes \
+              -o ConnectTimeout=10 \
+              -i "$HOME/.ssh/deploy_mcp_omie" \
+              root@192.168.50.25 true
+
+      - name: Verify the deployed server is healthy
+        # deploy.sh already gates on /health and rolls back, but it checks from
+        # inside the target. This confirms the service is reachable over the
+        # network path clients actually use.
+        run: |
+          for i in $(seq 1 10); do
+            if curl -fsS --max-time 5 http://192.168.50.25:3000/health; then
+              echo
+              echo "healthy"
+              exit 0
+            fi
+            sleep 3
+          done
+          echo "health check failed after deploy" >&2
+          exit 1
