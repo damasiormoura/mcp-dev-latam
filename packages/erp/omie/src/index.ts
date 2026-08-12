@@ -41,6 +41,12 @@
  * Environment:
  *   OMIE_APP_KEY — Omie app key
  *   OMIE_APP_SECRET — Omie app secret
+ *
+ * HTTP transport (MCP_HTTP=true / --http):
+ *   MCP_PORT — listen port (default 3000)
+ *   MCP_AUTH_ISSUER — OIDC issuer; enables OAuth enforcement with the next var
+ *   MCP_AUTH_RESOURCE — this server's canonical URL, required in the token `aud`
+ *   MCP_INSECURE_HTTP — set to "true" to allow starting HTTP with no auth
  */
 
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
@@ -67,6 +73,36 @@ const DEMO_RESPONSES: Record<string, unknown> = {
 const APP_KEY = process.env.OMIE_APP_KEY || "";
 const APP_SECRET = process.env.OMIE_APP_SECRET || "";
 const BASE_URL = "https://app.omie.com.br/api/v1";
+
+// ---------------------------------------------------------------------------
+// OAuth 2.0 protected-resource support (HTTP transport only).
+//
+// This server exposes write tools that move money and inventory in a real ERP
+// (pay_account_payable, invoice_sales_order, create_stock_adjustment, ...), so
+// the HTTP transport must not be reachable without a verified caller.
+//
+// Both variables must be set to enable enforcement:
+//   MCP_AUTH_ISSUER   — OIDC issuer, e.g. https://idp.example.com/realms/mcp
+//   MCP_AUTH_RESOURCE — this server's canonical URL, exactly as entered in the
+//                       client, e.g. https://mcp.example.com/mcp. Tokens must
+//                       carry it in `aud`, which is what stops a token minted
+//                       for some other service on the same issuer from being
+//                       replayed here.
+//
+// Unset (the default) leaves the server unauthenticated, which is correct for
+// the stdio transport where the OS is the trust boundary — but the HTTP
+// transport refuses to start that way unless MCP_AUTH_INSECURE=true is set
+// explicitly, so an unprotected deployment can't happen by omission.
+// ---------------------------------------------------------------------------
+const AUTH_ISSUER = process.env.MCP_AUTH_ISSUER || "";
+const AUTH_RESOURCE = process.env.MCP_AUTH_RESOURCE || "";
+const AUTH_ENABLED = Boolean(AUTH_ISSUER && AUTH_RESOURCE);
+
+/** Where the protected-resource metadata document lives, derived from the resource URL. */
+function metadataUrl(): string {
+  const u = new URL(AUTH_RESOURCE);
+  return `${u.origin}/.well-known/oauth-protected-resource`;
+}
 
 async function omieRequest(path: string, call: string, param: unknown[]): Promise<unknown> {
   const res = await fetch(`${BASE_URL}${path}`, {
@@ -679,11 +715,94 @@ async function main() {
   if (process.argv.includes("--http") || process.env.MCP_HTTP === "true") {
     const { default: express } = await import("express");
     const { randomUUID } = await import("node:crypto");
+
+    if (!AUTH_ENABLED && process.env.MCP_INSECURE_HTTP !== "true") {
+      console.error(
+        "Refusing to start the HTTP transport without authentication.\n" +
+          "This server can create orders, settle payables, issue invoices and adjust\n" +
+          "stock in a live ERP; an open /mcp endpoint hands those to anyone who\n" +
+          "reaches it. Set MCP_AUTH_ISSUER and MCP_AUTH_RESOURCE to enable OAuth\n" +
+          "token verification, or set MCP_INSECURE_HTTP=true if this port is truly\n" +
+          "unreachable from anywhere untrusted."
+      );
+      process.exit(1);
+    }
+
+    // Verifies the RFC 9068 access token on each request: signature against the
+    // issuer's published JWKS, plus `iss`, `aud` and expiry. jose caches and
+    // refreshes the key set, so a key rotation at the IdP is picked up without
+    // a restart.
+    const { createRemoteJWKSet, jwtVerify } = await import("jose");
+    let jwks: ReturnType<typeof createRemoteJWKSet> | undefined;
+
+    async function getJwks() {
+      if (!jwks) {
+        const res = await fetch(`${AUTH_ISSUER}/.well-known/openid-configuration`);
+        if (!res.ok) throw new Error(`OIDC discovery failed: HTTP ${res.status}`);
+        const meta = (await res.json()) as { jwks_uri?: string };
+        if (!meta.jwks_uri) throw new Error("OIDC discovery document has no jwks_uri");
+        jwks = createRemoteJWKSet(new URL(meta.jwks_uri));
+      }
+      return jwks;
+    }
+
+    // A 401 carrying `WWW-Authenticate` is what tells the client where to
+    // authenticate. It must be a 401 — clients ignore the header on a 200, and
+    // a tool-level error would look like a working server that just failed.
+    function unauthorized(res: any, description?: string) {
+      const params = [`resource_metadata="${metadataUrl()}"`];
+      if (description) params.push(`error="invalid_token"`, `error_description="${description}"`);
+      res.set("WWW-Authenticate", `Bearer ${params.join(", ")}`);
+      res.status(401).json({
+        jsonrpc: "2.0",
+        error: { code: -32001, message: description || "Authentication required" },
+        id: null,
+      });
+    }
+
+    async function requireAuth(req: any, res: any): Promise<boolean> {
+      if (!AUTH_ENABLED) return true;
+      const header = req.headers.authorization;
+      if (typeof header !== "string" || !header.startsWith("Bearer ")) {
+        unauthorized(res);
+        return false;
+      }
+      try {
+        await jwtVerify(header.slice(7), await getJwks(), {
+          issuer: AUTH_ISSUER,
+          audience: AUTH_RESOURCE,
+        });
+        return true;
+      } catch (err) {
+        unauthorized(res, err instanceof Error ? err.message : "Invalid token");
+        return false;
+      }
+    }
+
     const app = express();
     app.use(express.json());
     const transports = new Map<string, StreamableHTTPServerTransport>();
+
+    // Unauthenticated on purpose: the container healthcheck calls it, and it
+    // discloses nothing but liveness and a session count.
     app.get("/health", (_req: any, res: any) => res.json({ status: "ok", sessions: transports.size }));
+
+    if (AUTH_ENABLED) {
+      // RFC 9728 protected resource metadata. Served at both the bare path and
+      // the path-suffixed form, since clients probe
+      // /.well-known/oauth-protected-resource/<mcp path> first.
+      const metadata = {
+        resource: AUTH_RESOURCE,
+        authorization_servers: [AUTH_ISSUER],
+        bearer_methods_supported: ["header"],
+      };
+      const serveMetadata = (_req: any, res: any) => res.json(metadata);
+      app.get("/.well-known/oauth-protected-resource", serveMetadata);
+      app.get("/.well-known/oauth-protected-resource/{*path}", serveMetadata);
+    }
+
     app.post("/mcp", async (req: any, res: any) => {
+      if (!(await requireAuth(req, res))) return;
       const sid = req.headers["mcp-session-id"] as string | undefined;
       if (sid && transports.has(sid)) { await transports.get(sid)!.handleRequest(req, res, req.body); return; }
       if (!sid && isInitializeRequest(req.body)) {
@@ -694,10 +813,17 @@ async function main() {
       }
       res.status(400).json({ jsonrpc: "2.0", error: { code: -32000, message: "Bad Request" }, id: null });
     });
-    app.get("/mcp", async (req: any, res: any) => { const sid = req.headers["mcp-session-id"] as string; if (sid && transports.has(sid)) await transports.get(sid)!.handleRequest(req, res); else res.status(400).send("Invalid session"); });
-    app.delete("/mcp", async (req: any, res: any) => { const sid = req.headers["mcp-session-id"] as string; if (sid && transports.has(sid)) await transports.get(sid)!.handleRequest(req, res); else res.status(400).send("Invalid session"); });
+    app.get("/mcp", async (req: any, res: any) => { if (!(await requireAuth(req, res))) return; const sid = req.headers["mcp-session-id"] as string; if (sid && transports.has(sid)) await transports.get(sid)!.handleRequest(req, res); else res.status(400).send("Invalid session"); });
+    app.delete("/mcp", async (req: any, res: any) => { if (!(await requireAuth(req, res))) return; const sid = req.headers["mcp-session-id"] as string; if (sid && transports.has(sid)) await transports.get(sid)!.handleRequest(req, res); else res.status(400).send("Invalid session"); });
     const port = Number(process.env.MCP_PORT) || 3000;
-    app.listen(port, () => { console.error(`MCP HTTP server on http://localhost:${port}/mcp`); });
+    app.listen(port, () => {
+      console.error(`MCP HTTP server on http://localhost:${port}/mcp`);
+      console.error(
+        AUTH_ENABLED
+          ? `Auth: OAuth bearer required (issuer ${AUTH_ISSUER}, audience ${AUTH_RESOURCE})`
+          : "Auth: DISABLED (MCP_INSECURE_HTTP=true) — do not expose this port"
+      );
+    });
   } else {
     const transport = new StdioServerTransport();
     await server.connect(transport);
