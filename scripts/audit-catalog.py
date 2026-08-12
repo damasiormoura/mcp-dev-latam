@@ -21,6 +21,7 @@ Exit code: 0 if no critical drift, 1 if any HIGH-severity finding.
 
 Usage:
   python3 scripts/audit-catalog.py
+  python3 scripts/audit-catalog.py --only erp/omie
   python3 scripts/audit-catalog.py --out docs/catalog-audit.md
   python3 scripts/audit-catalog.py --json | jq .
 """
@@ -263,10 +264,30 @@ def run() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--out", help="Write report to file (default: stdout)")
     parser.add_argument("--json", action="store_true", help="Emit JSON instead of markdown")
+    parser.add_argument(
+        "--only",
+        action="append",
+        metavar="SLUG",
+        help="Audit only these servers, by slug (e.g. erp/omie). Repeatable. "
+        "An unknown slug is an error rather than an empty run, so a typo can't "
+        "quietly turn the gate into a no-op.",
+    )
     args = parser.parse_args()
 
     audit = Audit()
     server_dirs = discover_servers()
+
+    if args.only:
+        wanted = set(args.only)
+        unknown = wanted - {server_slug(d) for d in server_dirs}
+        if unknown:
+            print(
+                f"error: no server found for --only {', '.join(sorted(unknown))}",
+                file=sys.stderr,
+            )
+            return 2
+        server_dirs = [d for d in server_dirs if server_slug(d) in wanted]
+
     audit.servers_seen = len(server_dirs)
 
     for d in server_dirs:
