@@ -801,10 +801,25 @@ async function main() {
       app.get("/.well-known/oauth-protected-resource/{*path}", serveMetadata);
     }
 
+    // Sessions live in this process's memory, so every restart or redeploy
+    // invalidates the session IDs clients are holding. The Streamable HTTP
+    // spec covers exactly this: an unknown Mcp-Session-Id must answer 404, and
+    // a client receiving 404 starts a fresh session with a new initialize
+    // request. Answering 400 instead (as this did) reads as a malformed
+    // request, so clients surface an error rather than reconnecting.
+    function unknownSession(res: any) {
+      res.status(404).json({
+        jsonrpc: "2.0",
+        error: { code: -32001, message: "Session not found" },
+        id: null,
+      });
+    }
+
     app.post("/mcp", async (req: any, res: any) => {
       if (!(await requireAuth(req, res))) return;
       const sid = req.headers["mcp-session-id"] as string | undefined;
       if (sid && transports.has(sid)) { await transports.get(sid)!.handleRequest(req, res, req.body); return; }
+      if (sid) { unknownSession(res); return; }
       if (!sid && isInitializeRequest(req.body)) {
         const t = new StreamableHTTPServerTransport({ sessionIdGenerator: () => randomUUID(), onsessioninitialized: (id) => { transports.set(id, t); } });
         t.onclose = () => { if (t.sessionId) transports.delete(t.sessionId); };
@@ -813,8 +828,8 @@ async function main() {
       }
       res.status(400).json({ jsonrpc: "2.0", error: { code: -32000, message: "Bad Request" }, id: null });
     });
-    app.get("/mcp", async (req: any, res: any) => { if (!(await requireAuth(req, res))) return; const sid = req.headers["mcp-session-id"] as string; if (sid && transports.has(sid)) await transports.get(sid)!.handleRequest(req, res); else res.status(400).send("Invalid session"); });
-    app.delete("/mcp", async (req: any, res: any) => { if (!(await requireAuth(req, res))) return; const sid = req.headers["mcp-session-id"] as string; if (sid && transports.has(sid)) await transports.get(sid)!.handleRequest(req, res); else res.status(400).send("Invalid session"); });
+    app.get("/mcp", async (req: any, res: any) => { if (!(await requireAuth(req, res))) return; const sid = req.headers["mcp-session-id"] as string; if (sid && transports.has(sid)) await transports.get(sid)!.handleRequest(req, res); else unknownSession(res); });
+    app.delete("/mcp", async (req: any, res: any) => { if (!(await requireAuth(req, res))) return; const sid = req.headers["mcp-session-id"] as string; if (sid && transports.has(sid)) await transports.get(sid)!.handleRequest(req, res); else unknownSession(res); });
     const port = Number(process.env.MCP_PORT) || 3000;
     app.listen(port, () => {
       console.error(`MCP HTTP server on http://localhost:${port}/mcp`);
