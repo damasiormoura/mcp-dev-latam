@@ -1,0 +1,122 @@
+name: Sync upstream (erp/omie)
+
+# Weekly watcher for codespar/mcp-dev-latam changes that touch
+# packages/erp/omie ONLY. It never merges anything automatically — it opens
+# a PR containing an isolated upstream-to-upstream diff report for manual
+# review, so a security re-audit can happen before anything from upstream
+# is ported into this fork's (patched) copy of the server.
+
+on:
+  schedule:
+    - cron: "0 9 * * 1" # Mondays, 09:00 UTC
+  workflow_dispatch: {} # allow manual runs from the Actions tab
+
+permissions:
+  contents: write
+  pull-requests: write
+
+env:
+  UPSTREAM_REPO: codespar/mcp-dev-latam
+  TARGET_PATH: packages/erp/omie
+  STATE_FILE: .github/upstream-sync/omie.last-sha
+
+jobs:
+  check-upstream:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout fork
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Fetch upstream
+        run: |
+          git remote add upstream "https://github.com/${UPSTREAM_REPO}.git"
+          git fetch upstream main
+
+      - name: Determine last-reviewed upstream commit
+        id: last
+        run: |
+          if [ -f "$STATE_FILE" ]; then
+            echo "sha=$(cat "$STATE_FILE")" >> "$GITHUB_OUTPUT"
+          else
+            # No state file yet (shouldn't normally happen — it's committed
+            # alongside this workflow). Fall back to the fork point so the
+            # first report isn't the entire file history.
+            echo "sha=$(git merge-base HEAD upstream/main)" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Diff target path since last review
+        id: diff
+        run: |
+          last="${{ steps.last.outputs.sha }}"
+          current="$(git rev-parse upstream/main)"
+          echo "current=$current" >> "$GITHUB_OUTPUT"
+
+          if [ "$last" = "$current" ]; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          if git diff --quiet "$last" "$current" -- "$TARGET_PATH"; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Build isolated diff report
+        if: steps.diff.outputs.changed == 'true'
+        run: |
+          last="${{ steps.last.outputs.sha }}"
+          current="${{ steps.diff.outputs.current }}"
+          mkdir -p .github/upstream-sync
+
+          {
+            echo "# Upstream changes in \`$TARGET_PATH\`"
+            echo
+            echo "Comparing \`${UPSTREAM_REPO}@${last:0:12}\` → \`${UPSTREAM_REPO}@${current:0:12}\`."
+            echo
+            echo "This PR does **not** touch this fork's copy of \`$TARGET_PATH\` and does not"
+            echo "merge automatically. It only reports what changed upstream since the last"
+            echo "review, so a human can decide what (if anything) to port into this fork's"
+            echo "already-patched, security-reviewed copy — and re-run the security audit"
+            echo "(network destinations, \`npm audit\`, install scripts) before doing so."
+            echo
+            echo "## Commits"
+            echo '```'
+            git log --oneline "${last}..${current}" -- "$TARGET_PATH"
+            echo '```'
+            echo
+            echo "## File diff"
+            echo '```diff'
+            git diff "${last}" "${current}" -- "$TARGET_PATH"
+            echo '```'
+          } > .github/upstream-sync/omie-latest-diff.md
+
+          echo "$current" > "$STATE_FILE"
+
+      - name: Open pull request
+        if: steps.diff.outputs.changed == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          git config user.name "upstream-sync-bot"
+          git config user.email "actions@users.noreply.github.com"
+
+          branch="sync-upstream/omie-$(date -u +%Y%m%d)"
+          git checkout -b "$branch"
+          git add .github/upstream-sync
+          git commit -m "chore(sync): upstream changed packages/erp/omie — review needed"
+          git push origin "$branch" --force
+
+          existing_pr="$(gh pr list --head "$branch" --state open --json number --jq '.[0].number' || true)"
+          if [ -n "$existing_pr" ]; then
+            gh pr edit "$existing_pr" --body-file .github/upstream-sync/omie-latest-diff.md
+          else
+            gh pr create \
+              --title "Upstream update available: packages/erp/omie" \
+              --body-file .github/upstream-sync/omie-latest-diff.md \
+              --base main \
+              --head "$branch" \
+              --label "upstream-sync"
+          fi
