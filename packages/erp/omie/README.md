@@ -53,6 +53,9 @@ Add to `.cursor/mcp.json` or `.vscode/mcp.json`:
 
 ## Tools (30)
 
+> Conformance status of each tool against the official Omie API reference:
+> [`API-AUDIT.md`](./API-AUDIT.md).
+
 | Tool | Purpose |
 |---|---|
 | `list_customers` | List customers from Omie ERP |
