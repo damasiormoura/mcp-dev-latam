@@ -25,6 +25,11 @@ permissions:
 jobs:
   deploy:
     runs-on: [self-hosted, mcp-omie]
+    # The `production` environment carries a required-reviewer rule, so the job
+    # parks in "Waiting" until the repository owner approves it in the Actions
+    # UI. Nothing reaches the live ERP server without that click, including a
+    # push that somehow lands on main without review.
+    environment: production
     timeout-minutes: 15
     steps:
       - name: Deploy over SSH
