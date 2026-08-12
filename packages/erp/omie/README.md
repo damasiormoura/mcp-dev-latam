@@ -86,9 +86,52 @@ Add to `.cursor/mcp.json` or `.vscode/mcp.json`:
 | `get_sales_order` | Consult a specific sales order by ID or integration code in Omie ERP |
 | `invoice_sales_order` | Generate an invoice (NF) from an existing sales order in Omie ERP |
 
+## Remote (HTTP) transport
+
+Besides stdio, the server can run as a remote MCP server over Streamable HTTP —
+which is what you want when the server lives on your own infrastructure and
+holds the Omie credentials, rather than running on each user's machine.
+
+```bash
+docker build -t mcp-omie packages/erp/omie
+docker run -d --name mcp-omie --restart unless-stopped \
+  -p 3000:3000 --env-file .env mcp-omie
+```
+
+| Endpoint | Auth | Purpose |
+|---|---|---|
+| `POST /mcp` | Bearer token | MCP Streamable HTTP endpoint |
+| `GET`/`DELETE /mcp` | Bearer token | Session stream / teardown |
+| `GET /health` | none | Liveness + active session count |
+| `GET /.well-known/oauth-protected-resource` | none | RFC 9728 metadata, when OAuth is configured |
+
+Sessions are held in memory, so a restart or redeploy invalidates them. The
+server answers `404` for an unknown session ID, which tells a spec-compliant
+client to open a fresh session on its own.
+
 ## Authentication
 
-Omie uses JSON-RPC style requests with app_key and app_secret in the request body.
+There are two independent layers, and the HTTP transport needs both.
+
+**1. Omie API credentials.** Omie uses JSON-RPC style requests with `app_key`
+and `app_secret` in the request body. These authenticate *this server to Omie*.
+
+**2. OAuth on the HTTP transport.** These authenticate *callers to this server*.
+This matters because the tool list is not read-only: `pay_account_payable`,
+`invoice_sales_order`, `create_stock_adjustment` and `create_order` move money
+and inventory in a live ERP, so an open `/mcp` endpoint hands those to anyone
+who can reach it.
+
+Set `MCP_AUTH_ISSUER` and `MCP_AUTH_RESOURCE` and the server will, per request,
+verify the bearer token's signature against the issuer's JWKS (discovered via
+OIDC discovery, so any standard provider works) along with `iss`, `aud` and
+expiry. The `aud` check is the part that stops a token minted for a different
+service on the same issuer from being replayed here.
+
+**The HTTP transport exits rather than starting unauthenticated.** If you
+genuinely need that — a loopback-only bind, say — set `MCP_INSECURE_HTTP=true`
+to say so deliberately. stdio is unaffected either way: there the operating
+system is the trust boundary.
 
 ## Sandbox / Testing
 
@@ -107,6 +150,15 @@ Omie provides a sandbox via app registration. Create an app to get test credenti
 |----------|----------|-------------|
 | `OMIE_APP_KEY` | Yes | Omie app key |
 | `OMIE_APP_SECRET` | Yes | Omie app secret |
+| `MCP_HTTP` | HTTP only | `true` to serve Streamable HTTP instead of stdio (same as `--http`) |
+| `MCP_PORT` | No | HTTP listen port (default `3000`) |
+| `MCP_AUTH_ISSUER` | HTTP only | OIDC issuer that mints access tokens, e.g. `https://idp.example.com/realms/mcp` |
+| `MCP_AUTH_RESOURCE` | HTTP only | This server's canonical URL, exactly as entered in the client. Tokens must carry it in `aud` |
+| `MCP_INSECURE_HTTP` | No | `true` allows the HTTP transport to start with no auth. Only for a port nothing untrusted can reach |
+| `MCP_DEMO` | No | `true` (or `--demo`) returns canned responses without calling Omie |
+
+`MCP_AUTH_ISSUER` and `MCP_AUTH_RESOURCE` are required together: the HTTP
+transport refuses to start unless both are set or `MCP_INSECURE_HTTP=true` is.
 
 ## Roadmap
 
