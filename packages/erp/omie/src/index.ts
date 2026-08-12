@@ -104,6 +104,25 @@ function metadataUrl(): string {
   return `${u.origin}/.well-known/oauth-protected-resource`;
 }
 
+/**
+ * Omie reports business errors as an HTTP 500 whose body is
+ * `{ faultstring, faultcode }` — not as a transport failure. Returning
+ * `res.text()` raw buried the readable message inside an escaped JSON blob,
+ * so the agent saw `Omie API 500: {"faultstring":"ERROR: Tag [...]..."}`
+ * instead of the sentence that says what to fix.
+ */
+type OmieFault = { faultstring?: string; faultcode?: string };
+
+/**
+ * Omie signals "this page has no rows" with fault 5113 rather than an empty
+ * list, so every `list_*` tool reported a plain empty result as a hard error.
+ * It is a successful query that matched nothing, and is reported as such.
+ */
+const OMIE_NO_RECORDS = "5113";
+
+/** Omie occasionally holds a connection open indefinitely; without this the tool call hangs. */
+const REQUEST_TIMEOUT_MS = 60_000;
+
 async function omieRequest(path: string, call: string, param: unknown[]): Promise<unknown> {
   const res = await fetch(`${BASE_URL}${path}`, {
     method: "POST",
@@ -116,12 +135,81 @@ async function omieRequest(path: string, call: string, param: unknown[]): Promis
       app_secret: APP_SECRET,
       param,
     }),
+    signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
   });
-  if (!res.ok) {
-    const err = await res.text();
-    throw new Error(`Omie API ${res.status}: ${err}`);
+
+  const text = await res.text();
+  let body: unknown = null;
+  try {
+    body = text ? JSON.parse(text) : null;
+  } catch {
+    body = null;
   }
-  return res.json();
+
+  // A fault can arrive on a 200 as well, so key off the envelope, not the status.
+  const fault = (body ?? {}) as OmieFault;
+  if (fault.faultstring) {
+    if (fault.faultcode?.includes(OMIE_NO_RECORDS)) {
+      return { registros: 0, total_de_registros: 0, omie_info: fault.faultstring };
+    }
+    throw new Error(`Omie [${fault.faultcode || res.status}]: ${fault.faultstring}`);
+  }
+
+  if (!res.ok) throw new Error(`Omie API ${res.status}: ${text}`);
+  return body;
+}
+
+/**
+ * `IncluirOS` takes Omie's nested `osCadastro` type (`Cabecalho` /
+ * `ServicosPrestados`), NOT the flat snake_case shape the customer and product
+ * endpoints accept. Forwarding the flat arguments unchanged is rejected on the
+ * first unrecognised key:
+ *
+ *   Tag [CODIGO_CLIENTE] não faz parte da estrutura do tipo complexo [osCadastro]
+ *
+ * This maps the convenience fields onto that structure. A caller that already
+ * knows the native shape can pass `Cabecalho` / `ServicosPrestados` directly and
+ * they win, so nothing here blocks access to fields not surfaced below.
+ *
+ * Fiscal fields (`cTribServ`, `cCodServMun`, `cCodServLC116`, `cRetemISS`) are
+ * deliberately NOT defaulted — they depend on the municipality and on how the
+ * service is registered, and guessing a tax treatment on a live ERP is worse
+ * than letting Omie reject the call with a message that names the missing field.
+ */
+function buildServiceOrder(args: Record<string, unknown>): Record<string, unknown> {
+  const nativeHeader = args.Cabecalho as Record<string, unknown> | undefined;
+  const nativeServices = args.ServicosPrestados as unknown[] | undefined;
+
+  const cabecalho: Record<string, unknown> = {
+    ...(args.codigo_pedido_integracao !== undefined ? { cCodIntOS: args.codigo_pedido_integracao } : {}),
+    ...(args.codigo_cliente !== undefined ? { nCodCli: args.codigo_cliente } : {}),
+    ...(args.data_previsao !== undefined ? { dDtPrevisao: args.data_previsao } : {}),
+    // "10" is the opening stage — the OS is created but not sent for invoicing.
+    cEtapa: "10",
+    ...nativeHeader,
+  };
+
+  const mapped = (args.servicos as Record<string, unknown>[] | undefined)?.map((s) => ({
+    ...(s.descricao !== undefined ? { cDescServ: s.descricao } : {}),
+    ...(s.quantidade !== undefined ? { nQtde: s.quantidade } : {}),
+    ...(s.valor_unitario !== undefined ? { nValUnit: s.valor_unitario } : {}),
+    ...(s.codigo_servico !== undefined ? { nCodServico: s.codigo_servico } : {}),
+    ...(s.cTribServ !== undefined ? { cTribServ: s.cTribServ } : {}),
+    ...(s.cCodServMun !== undefined ? { cCodServMun: s.cCodServMun } : {}),
+    ...(s.cCodServLC116 !== undefined ? { cCodServLC116: s.cCodServLC116 } : {}),
+    ...(s.cRetemISS !== undefined ? { cRetemISS: s.cRetemISS } : {}),
+  }));
+
+  const servicos = nativeServices ?? mapped;
+
+  return {
+    Cabecalho: cabecalho,
+    ...(servicos ? { ServicosPrestados: servicos } : {}),
+    ...(args.observacoes !== undefined ? { Observacoes: { cObsOS: args.observacoes } } : {}),
+    ...(args.InformacoesAdicionais ? { InformacoesAdicionais: args.InformacoesAdicionais } : {}),
+    ...(args.Departamentos ? { Departamentos: args.Departamentos } : {}),
+    ...(args.Parcelas ? { Parcelas: args.Parcelas } : {}),
+  };
 }
 
 // NOTE: upstream ships a "managed-tier" promotional string here, injected into
@@ -274,15 +362,32 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
     },
     {
       name: "create_service_order",
-      description: "Create a service order (OS) in Omie ERP",
+      description:
+        "Create a service order (OS) in Omie ERP. Values are in BRL reais with decimals (1500.50 = R$ 1.500,50), not centavos.",
       inputSchema: {
         type: "object",
         properties: {
           codigo_cliente: { type: "number", description: "Omie customer ID" },
           codigo_pedido_integracao: { type: "string", description: "Integration order code (unique)" },
           data_previsao: { type: "string", description: "Expected date (DD/MM/YYYY)" },
-          servicos: { type: "array", description: "Array of services (descricao, valor_unitario, quantidade)" },
+          servicos: {
+            type: "array",
+            description:
+              "Services on the order. Each item: descricao, quantidade, valor_unitario (BRL, decimal). Omie also requires the fiscal fields for the municipality — codigo_servico (registered service ID), cTribServ, cCodServMun, cCodServLC116, cRetemISS (S/N) — which are forwarded when supplied and have no default.",
+          },
           observacoes: { type: "string", description: "Order notes/observations" },
+          Cabecalho: {
+            type: "object",
+            description:
+              "Optional native Omie osCadastro header (cCodIntOS, nCodCli, dDtPrevisao, cEtapa, cCodParc, nQtdeParc). Overrides the fields mapped from the convenience arguments above.",
+          },
+          ServicosPrestados: {
+            type: "array",
+            description: "Optional native Omie service lines. Used verbatim instead of `servicos` when supplied.",
+          },
+          InformacoesAdicionais: { type: "object", description: "Native block: cCodCateg, nCodCC, etc." },
+          Departamentos: { type: "array", description: "Native block: department/cost-centre apportionment." },
+          Parcelas: { type: "array", description: "Native block: instalments." },
         },
         required: ["codigo_cliente", "codigo_pedido_integracao", "data_previsao", "servicos"],
       },
@@ -610,7 +715,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           registros_por_pagina: args?.registros_por_pagina || 50,
         }]), null, 2) }] };
       case "create_service_order":
-        return { content: [{ type: "text", text: JSON.stringify(await omieRequest("/servicos/os/", "IncluirOS", [args || {}]), null, 2) }] };
+        return { content: [{ type: "text", text: JSON.stringify(await omieRequest("/servicos/os/", "IncluirOS", [buildServiceOrder(args || {})]), null, 2) }] };
       case "list_service_orders":
         return { content: [{ type: "text", text: JSON.stringify(await omieRequest("/servicos/os/", "ListarOS", [{
           pagina: args?.pagina || 1,
