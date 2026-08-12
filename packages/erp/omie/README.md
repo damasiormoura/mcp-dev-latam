@@ -53,6 +53,30 @@ Add to `.cursor/mcp.json` or `.vscode/mcp.json`:
 
 ## Tools (30)
 
+> Conformance status of each tool against the official Omie API reference:
+> [`API-AUDIT.md`](./API-AUDIT.md).
+
+### Breaking change in 0.2.3
+
+Seven tools could not work as shipped — two named Omie methods that do not
+exist, and five sent a `param` the API does not accept. Fixing them meant
+replacing their input schemas with the documented contract, so calls written
+against 0.2.2 need updating:
+
+| Tool | Was | Now |
+|---|---|---|
+| `create_order` | flat `codigo_cliente`, `data_previsao`, `itens` | `cabecalho` + `det[]` + `informacoes_adicionais` |
+| `create_service_order` | flat `codigo_cliente`, `servicos` | `Cabecalho` + `ServicosPrestados[]` + `InformacoesAdicionais` |
+| `create_purchase_order` | flat `codigo_fornecedor`, `itens` (method `IncluirPedidoCompra`, nonexistent) | `cabecalho_incluir` + `produtos_incluir[]` (method `IncluirPedCompra`) |
+| `list_purchase_orders` | `pagina`, `registros_por_pagina`, `etapa` (method `ListarPedidosCompra`, nonexistent) | `nPagina`, `nRegsPorPagina`, `lExibirPedidos*` flags (method `PesquisarPedCompra`) |
+| `create_stock_adjustment` | `codigo_produto`, `quantidade`, `tipo_ajuste`, `data_ajuste` | `id_prod`, `quan`, `tipo`, `data`, plus the mandatory `origem` and `obs` |
+| `create_cash_entry` | `cCodIntLanc` inside `cabecalho`; `cNatureza`, `cHistorico` | `cCodIntLanc` at the top level; direction comes from the sign of `nValorLanc` |
+| `create_invoice` | `nIdNF` | `nCodNF` (or `cChaveNFe`, or `nNF` + `serie`) |
+
+Arguments are now checked against each tool's schema before the request
+leaves, so a missing required field returns a local message naming the field
+instead of an opaque Omie `500`.
+
 | Tool | Purpose |
 |---|---|
 | `list_customers` | List customers from Omie ERP |
