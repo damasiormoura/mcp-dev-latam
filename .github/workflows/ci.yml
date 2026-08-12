@@ -21,8 +21,8 @@ jobs:
   build-and-test:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with:
           node-version: 22
 
@@ -40,8 +40,8 @@ jobs:
   catalog:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
 
@@ -60,22 +60,31 @@ jobs:
   security:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with:
           node-version: 22
 
-      # packages/erp/omie carries its own lockfile — the same one the Docker
-      # image installs from — so auditing it audits exactly the dependency tree
-      # that reaches the live server, rather than a 111-workspace tree that is
-      # never deployed.
-      - name: Install omie dependencies (standalone lockfile)
-        run: npm ci
-        working-directory: packages/erp/omie
-
-      - name: npm audit
-        run: npm audit --omit=dev || true
-        working-directory: packages/erp/omie
+      # packages/erp/omie carries its own lockfile — the one the Docker image
+      # installs from — so auditing it measures the dependency tree that
+      # actually reaches the live server.
+      #
+      # Running npm there in place does NOT do that: npm walks up, finds the
+      # workspace config in the repo root, ignores the package's lockfile and
+      # resolves the whole 111-workspace tree instead. Copying the two files
+      # somewhere with no workspace root above them is exactly what the
+      # Dockerfile does (`COPY package.json package-lock.json`), and it is what
+      # makes this audit mean what it says.
+      #
+      # --package-lock-only audits the lockfile directly, so no install is
+      # needed. `|| true` is deliberate: this reports, it does not gate. Drop it
+      # to make a new advisory against the shipped tree fail the build.
+      - name: npm audit (omie's standalone lockfile)
+        run: |
+          audit_dir="$(mktemp -d)"
+          cp packages/erp/omie/package.json packages/erp/omie/package-lock.json "$audit_dir/"
+          cd "$audit_dir"
+          npm audit --package-lock-only --omit=dev || true
 
       - name: Scan for hardcoded secrets
         run: |
