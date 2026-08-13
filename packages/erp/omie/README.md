@@ -220,6 +220,15 @@ so the caller's own reference now goes in `codigo_baixa_integracao` (string).
 It is no longer required — `valor`, `data` and `codigo_conta_corrente` are —
 and `juros`, `desconto`, `multa` and `conciliar_documento` are now available.
 
+**0.6.0** enforces the "identify this record via at least one of these
+fields" rule that used to live only in a tool's description — a call to
+`get_customer`, `pay_account_payable`, `create_purchase_order` or any of the
+~35 other affected tools with *none* of the alternative ID fields now fails
+locally instead of reaching Omie with nothing to act on. If your integration
+was already always sending an identifier, nothing changes; if it was relying
+on Omie's own error for a call with no identifier at all, that error now
+comes from this server instead, with the same information.
+
 Arguments are checked against each tool's schema before the request leaves, so
 a missing required field returns a local message naming the field instead of an
 opaque Omie `500`.
@@ -347,10 +356,18 @@ SDK's private fields, plus idle-session eviction). See the
 [Resilience](#resilience) section above and
 [`API-AUDIT.md`](./API-AUDIT.md) section 4.
 
+### v0.6 (shipped)
+The two items v0.5 left partial: `anyOfRequired` (a narrow, purpose-built
+"identify this record via at least one of these fields" schema check —
+not a general JSON Schema `oneOf`) now enforces every "one of two/three ID
+fields" rule that used to live only in a tool's description, at 39 places
+across 8 modules. Demo mode's curated examples grew from 9 to 22 tools, each
+verified against Omie's real response type. See
+[`API-AUDIT.md`](./API-AUDIT.md) section 4.5/4.6 for exactly what's covered
+and — a few genuinely conditional fields, like `create_invoice`'s `nNF`
+needing `serie` — what's deliberately still not.
+
 ### Next
-- Cross-field validation ("`codigo_produto` or `codigo_produto_integracao`,
-  one of the two") — currently documented in each field's description only,
-  since it needs `oneOf`/`anyOf` wiring the current validator doesn't have.
 - `create_production_order` — `/produtos/op/`
 - `create_service_contract` — `/servicos/contrato/`
 - `reconcile_bank_transaction` — bank reconciliation matching

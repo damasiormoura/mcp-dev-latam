@@ -207,3 +207,54 @@ describe("validateArgs — scalar types and enums", () => {
     expect(validateArgs(schema, { tipo: "ENT", n: 50 })).toEqual([]);
   });
 });
+
+describe("validateArgs — anyOfRequired", () => {
+  const schema = {
+    type: "object",
+    properties: { codigo_produto: { type: "number" }, codigo_produto_integracao: { type: "string" } },
+    anyOfRequired: ["codigo_produto", "codigo_produto_integracao"],
+  };
+
+  it("rejects an object with none of the alternative identifying fields", async () => {
+    const { validateArgs } = await import("../omie.js");
+    const errors = validateArgs(schema, {});
+    expect(errors).toEqual([
+      "arguments must include at least one of: codigo_produto, codigo_produto_integracao",
+    ]);
+  });
+
+  it("accepts either alternative on its own", async () => {
+    const { validateArgs } = await import("../omie.js");
+    expect(validateArgs(schema, { codigo_produto: 1 })).toEqual([]);
+    expect(validateArgs(schema, { codigo_produto_integracao: "SKU-1" })).toEqual([]);
+  });
+
+  it("accepts both alternatives given together — this is 'at least one', not exactly one", async () => {
+    const { validateArgs } = await import("../omie.js");
+    expect(validateArgs(schema, { codigo_produto: 1, codigo_produto_integracao: "SKU-1" })).toEqual([]);
+  });
+
+  it("reports the anyOfRequired violation alongside an unrelated required-field violation", async () => {
+    const { validateArgs } = await import("../omie.js");
+    const combined = { ...schema, required: ["quantidade"] };
+    const errors = validateArgs(combined, {});
+    expect(errors).toContain("quantidade is required");
+    expect(errors).toContain(
+      "arguments must include at least one of: codigo_produto, codigo_produto_integracao"
+    );
+  });
+
+  it("applies at whatever nesting level the object schema appears", async () => {
+    const { validateArgs } = await import("../omie.js");
+    const nested = { type: "object", properties: { produto: schema } };
+    const errors = validateArgs(nested, { produto: {} });
+    expect(errors).toEqual([
+      "produto must include at least one of: codigo_produto, codigo_produto_integracao",
+    ]);
+  });
+
+  it("ignores anyOfRequired when it isn't declared, as before this feature existed", async () => {
+    const { validateArgs } = await import("../omie.js");
+    expect(validateArgs({ type: "object", properties: { a: { type: "number" } } }, {})).toEqual([]);
+  });
+});

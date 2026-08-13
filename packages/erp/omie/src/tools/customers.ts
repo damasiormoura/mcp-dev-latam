@@ -66,6 +66,7 @@ export const customerTools: OmieTool[] = [
         codigo_cliente_omie: { type: "number", description: "Omie customer ID" },
         codigo_cliente_integracao: { type: "string", description: "Integration code (alternative)" },
       },
+      anyOfRequired: ["codigo_cliente_omie", "codigo_cliente_integracao"],
     },
   },
   {
@@ -81,6 +82,7 @@ export const customerTools: OmieTool[] = [
         codigo_cliente_omie: { type: "number", description: "Omie customer ID" },
         ...customerFields,
       },
+      anyOfRequired: ["codigo_cliente_omie", "codigo_cliente_integracao"],
     },
   },
   {

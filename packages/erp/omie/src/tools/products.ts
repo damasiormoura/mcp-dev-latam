@@ -58,6 +58,7 @@ export const productTools: OmieTool[] = [
         codigo_produto_integracao: { type: "string", description: "Integration code (alternative)" },
         codigo: { type: "string", description: "Product code / SKU (alternative)" },
       },
+      anyOfRequired: ["codigo_produto", "codigo_produto_integracao", "codigo"],
     },
   },
   {
@@ -73,6 +74,7 @@ export const productTools: OmieTool[] = [
         codigo_produto: { type: "number", description: "Omie product ID" },
         ...productFields,
       },
+      anyOfRequired: ["codigo_produto", "codigo_produto_integracao", "codigo"],
     },
   },
   {

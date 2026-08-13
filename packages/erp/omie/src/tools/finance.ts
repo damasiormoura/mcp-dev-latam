@@ -26,6 +26,7 @@ const titleKey = {
   codigo_lancamento_omie: { type: "number", description: "Omie title ID" },
   codigo_lancamento_integracao: { type: "string", description: "Integration code (alternative)" },
 } as const;
+const titleKeyRequired = ["codigo_lancamento_omie", "codigo_lancamento_integracao"] as const;
 
 /**
  * Fields of a settlement (baixa). Shared shape between LancarRecebimento and
@@ -97,7 +98,7 @@ export const financeTools: OmieTool[] = [
     description: "Consult a single accounts receivable title in Omie ERP",
     path: AR,
     call: "ConsultarContaReceber",
-    inputSchema: { type: "object", properties: titleKey },
+    inputSchema: { type: "object", properties: titleKey, anyOfRequired: titleKeyRequired },
   },
   {
     name: "update_account_receivable",
@@ -107,6 +108,7 @@ export const financeTools: OmieTool[] = [
     inputSchema: {
       type: "object",
       properties: { codigo_lancamento_omie: titleKey.codigo_lancamento_omie, ...titleFields },
+      anyOfRequired: titleKeyRequired,
     },
   },
   {
@@ -121,6 +123,7 @@ export const financeTools: OmieTool[] = [
       type: "object",
       properties: settlementFields("receipt"),
       required: ["valor", "data", "codigo_conta_corrente"],
+      anyOfRequired: ["codigo_lancamento", "codigo_lancamento_integracao"],
     },
   },
   {
@@ -187,7 +190,7 @@ export const financeTools: OmieTool[] = [
     description: "Consult a single accounts payable title in Omie ERP",
     path: AP,
     call: "ConsultarContaPagar",
-    inputSchema: { type: "object", properties: titleKey },
+    inputSchema: { type: "object", properties: titleKey, anyOfRequired: titleKeyRequired },
   },
   {
     name: "update_account_payable",
@@ -197,6 +200,7 @@ export const financeTools: OmieTool[] = [
     inputSchema: {
       type: "object",
       properties: { codigo_lancamento_omie: titleKey.codigo_lancamento_omie, ...titleFields },
+      anyOfRequired: titleKeyRequired,
     },
   },
   {
@@ -212,6 +216,7 @@ export const financeTools: OmieTool[] = [
       type: "object",
       properties: settlementFields("payment"),
       required: ["valor", "data", "codigo_conta_corrente"],
+      anyOfRequired: ["codigo_lancamento", "codigo_lancamento_integracao"],
     },
   },
   {
@@ -344,6 +349,7 @@ export const financeTools: OmieTool[] = [
           },
         },
       },
+      anyOfRequired: ["cCodIntLanc", "nCodLanc"],
     },
   },
   {
@@ -357,6 +363,7 @@ export const financeTools: OmieTool[] = [
         nCodLanc: { type: "number", description: "Omie entry ID" },
         cCodIntLanc: { type: "string", description: "Integration code (alternative)" },
       },
+      anyOfRequired: ["nCodLanc", "cCodIntLanc"],
     },
   },
 

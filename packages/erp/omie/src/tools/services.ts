@@ -8,6 +8,7 @@ const osKey = {
   nCodOS: { type: "number", description: "Omie service order ID" },
   cCodIntOS: { type: "string", description: "Service order integration code (alternative)" },
 } as const;
+const osKeyRequired = ["nCodOS", "cCodIntOS"] as const;
 
 /** The ServicosPrestados item shape, shared by IncluirOS and AlterarOS. */
 const servicoPrestado = {
@@ -168,6 +169,7 @@ export const serviceTools: OmieTool[] = [
     inputSchema: {
       type: "object",
       properties: { ...osKey, cNumOS: { type: "string", description: "OS number as shown to the customer (alternative)" } },
+      anyOfRequired: [...osKeyRequired, "cNumOS"],
     },
   },
   {
@@ -184,6 +186,7 @@ export const serviceTools: OmieTool[] = [
           type: "object",
           description: "Service order header — identifies the OS and carries any header changes",
           properties: { ...osHeader, nCodOS: { type: "number", description: "Omie service order ID" } },
+          anyOfRequired: osKeyRequired,
         },
         InformacoesAdicionais: { type: "object", properties: osInfo },
         ServicosPrestados: { type: "array", description: "Items to alter or remove", items: servicoPrestado },
@@ -208,6 +211,7 @@ export const serviceTools: OmieTool[] = [
         cEtapa: { type: "string", description: "Target stage code (10, 20, 30, 40, 50, 60)" },
       },
       required: ["cEtapa"],
+      anyOfRequired: [...osKeyRequired, "cNumOS"],
     },
   },
   {
@@ -217,7 +221,7 @@ export const serviceTools: OmieTool[] = [
       "before invoice_service_order to surface blocking problems up front.",
     path: OSP,
     call: "ValidarOS",
-    inputSchema: { type: "object", properties: osKey },
+    inputSchema: { type: "object", properties: osKey, anyOfRequired: osKeyRequired },
   },
   {
     name: "invoice_service_order",
@@ -226,14 +230,14 @@ export const serviceTools: OmieTool[] = [
       "of invoice_sales_order.",
     path: OSP,
     call: "FaturarOS",
-    inputSchema: { type: "object", properties: osKey },
+    inputSchema: { type: "object", properties: osKey, anyOfRequired: osKeyRequired },
   },
   {
     name: "cancel_service_order",
     description: "Cancel a service order in Omie ERP (CancelarOS)",
     path: OSP,
     call: "CancelarOS",
-    inputSchema: { type: "object", properties: osKey },
+    inputSchema: { type: "object", properties: osKey, anyOfRequired: osKeyRequired },
   },
   {
     name: "list_services",
