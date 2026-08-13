@@ -8,6 +8,7 @@ const titleRef = {
   nCodTitulo: { type: "number", description: "Omie accounts receivable title ID" },
   cCodIntTitulo: { type: "string", description: "Title integration code (alternative)" },
 } as const;
+const titleRefRequired = ["nCodTitulo", "cCodIntTitulo"] as const;
 
 export const billingTools: OmieTool[] = [
   {
@@ -29,6 +30,7 @@ export const billingTools: OmieTool[] = [
         cUrlNotif: { type: "string", description: "Callback URL invoked when the payment settles" },
       },
       required: ["cCodIntPix"],
+      anyOfRequired: ["nCodTitulo", "vValor"],
     },
   },
   {
@@ -54,6 +56,7 @@ export const billingTools: OmieTool[] = [
         cCodIntPix: { type: "string", description: "PIX integration code (alternative)" },
         nCodTitulo: { type: "number", description: "AR title the PIX was raised against (alternative)" },
       },
+      anyOfRequired: ["nIdPix", "cCodIntPix", "nCodTitulo"],
     },
   },
   {
@@ -75,6 +78,7 @@ export const billingTools: OmieTool[] = [
         nIdPix: { type: "number", description: "Omie PIX ID" },
         cCodIntPix: { type: "string", description: "PIX integration code (alternative)" },
       },
+      anyOfRequired: ["nIdPix", "cCodIntPix"],
     },
   },
   {
@@ -82,7 +86,7 @@ export const billingTools: OmieTool[] = [
     description: "Generate a boleto for an accounts receivable title in Omie ERP (GerarBoleto)",
     path: BOLETO,
     call: "GerarBoleto",
-    inputSchema: { type: "object", properties: titleRef },
+    inputSchema: { type: "object", properties: titleRef, anyOfRequired: titleRefRequired },
   },
   {
     name: "get_boleto",
@@ -91,13 +95,13 @@ export const billingTools: OmieTool[] = [
       "generate_boleto first if the title has none.",
     path: BOLETO,
     call: "ObterBoleto",
-    inputSchema: { type: "object", properties: titleRef },
+    inputSchema: { type: "object", properties: titleRef, anyOfRequired: titleRefRequired },
   },
   {
     name: "cancel_boleto",
     description: "Cancel a boleto in Omie ERP (CancelarBoleto)",
     path: BOLETO,
     call: "CancelarBoleto",
-    inputSchema: { type: "object", properties: titleRef },
+    inputSchema: { type: "object", properties: titleRef, anyOfRequired: titleRefRequired },
   },
 ];

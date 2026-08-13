@@ -53,6 +53,7 @@ export const stockTools: OmieTool[] = [
         },
       },
       required: ["data", "tipo", "origem", "motivo", "quan", "valor", "obs"],
+      anyOfRequired: ["id_prod", "cod_int"],
     },
   },
   {
@@ -95,6 +96,7 @@ export const stockTools: OmieTool[] = [
         codigo_local_estoque: { type: "number", description: "Warehouse location ID" },
         data: date("Reference date"),
       },
+      anyOfRequired: ["id_prod", "cod_int"],
     },
   },
   {

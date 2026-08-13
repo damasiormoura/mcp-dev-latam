@@ -185,11 +185,16 @@ export async function omieRequest(path: string, call: string, param: unknown[]):
  * reach Omie.
  *
  * Covers: required fields, object/array/string/number/boolean type mismatches,
- * `enum` and numeric `minimum`/`maximum`. Deliberately does not cover
- * cross-field rules like "codigo_produto or codigo_produto_integracao, one of
- * the two" — several tools document such a rule in prose because the schemas
- * here are plain JSON Schema without oneOf/anyOf wiring; expressing that
- * properly is a larger, separate change.
+ * `enum`, numeric `minimum`/`maximum`, and — via the non-standard
+ * `anyOfRequired: string[]` property on an object schema — "identify this
+ * record via at least one of these sibling fields" (e.g. `codigo_produto` or
+ * `codigo_produto_integracao`). That single construct covers every case in
+ * this codebase that needed cross-field validation: every one of them is
+ * "pick one of N alternative ID fields", never a true divergent-subschema
+ * `oneOf`. A schema requiring the fuller thing — genuinely different shapes
+ * depending on which branch is taken — would need real `oneOf`/`anyOf`
+ * subschema resolution, which this validator deliberately doesn't implement;
+ * no tool here has needed it yet.
  */
 export function validateArgs(schema: any, value: unknown, path = ""): string[] {
   if (!schema || typeof schema !== "object") return [];
@@ -205,6 +210,14 @@ export function validateArgs(schema: any, value: unknown, path = ""): string[] {
       for (const key of schema.required ?? []) {
         if (obj[key] === undefined || obj[key] === null) {
           errors.push(`${path ? `${path}.` : ""}${key} is required`);
+        }
+      }
+      if (Array.isArray(schema.anyOfRequired) && schema.anyOfRequired.length > 0) {
+        const satisfied = schema.anyOfRequired.some(
+          (key: string) => obj[key] !== undefined && obj[key] !== null
+        );
+        if (!satisfied) {
+          errors.push(`${here} must include at least one of: ${schema.anyOfRequired.join(", ")}`);
         }
       }
       for (const [key, sub] of Object.entries(schema.properties ?? {})) {

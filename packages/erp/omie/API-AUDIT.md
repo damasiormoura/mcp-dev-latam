@@ -26,8 +26,15 @@ _Data: 2026-08-12 — versão auditada: `mcp-omie` 0.2.2 (30 tools, `src/index.t
 >   ausentes falham no primeiro uso com aviso adicional no startup, demo mode
 >   com fallback que ecoa os argumentos validados em vez de fingir sucesso, e
 >   `buildServer()` substituindo o acesso a campos privados do SDK + expiração
->   de sessão HTTP ociosa. **4.5 fica parcialmente aberto**: regras
->   "um dos dois campos" continuam só na descrição, não no schema.
+>   de sessão HTTP ociosa. Ficou de fora: as regras "um dos dois campos" (4.5)
+>   e cobertura maior do demo mode (4.6).
+> - **0.6.0** — **seção 4 fechada por completo**: `anyOfRequired` no
+>   validador cobre as regras "pelo menos um destes campos" em 39 pontos
+>   across 8 módulos (identificação de cliente/produto/pedido/OS/pedido de
+>   compra/título financeiro/PIX/boleto/ajuste de estoque), com os casos
+>   genuinamente condicionais (não "pelo menos um de N") deixados de fora e
+>   documentados abaixo. Demo mode cresceu de 9 para 22 tools curadas,
+>   verificadas contra o tipo de resposta real da Omie.
 > - **Aberto:** o que restou da seção 5 — CRM, contador, ordem de produção,
 >   contratos de serviço, tabelas de preço.
 
@@ -412,35 +419,62 @@ Adicionalmente, `main()` emite um aviso não-fatal no startup nesse mesmo caso
 credenciais, então encerrar o processo seria mais agressivo do que o
 necessário.
 
-### 4.5 Validação de entrada — estendida em 0.5.0, "um dos dois" ainda aberto
+### 4.5 Validação de entrada — fechada em 0.6.0
 
-`validateArgs` (`src/omie.ts`) agora confere tipo escalar (`string`,
-`number`, `boolean`), `enum` e `minimum`/`maximum` numérico, além do que já
-existia (obrigatórios, tipo objeto/array, `minItems`). Isso fecha o exemplo
-citado na versão anterior desta seção: `registros_por_pagina: 500` agora é
-rejeitado localmente em vez de chegar à Omie.
+`validateArgs` (`src/omie.ts`) confere tipo escalar (`string`, `number`,
+`boolean`), `enum`, `minimum`/`maximum` numérico (desde 0.5.0), e agora — via
+`anyOfRequired: string[]` no schema de um objeto — "identifique este registro
+por pelo menos um destes campos irmãos". Não é `oneOf`/`anyOf` genérico do
+JSON Schema (que exigiria resolver subschemas divergentes); é uma construção
+única, propositalmente estreita, porque todo caso real neste codebase é
+exatamente esse padrão — "um entre N campos de ID alternativos" — nunca um
+formato genuinamente diferente por ramo.
 
-**Ainda aberto:** as regras "um dos dois" (`codigo_produto` **ou**
-`codigo_produto_integracao`, `nCodFor` **ou** `cCodIntFor`, `id_prod` **ou**
-`cod_int`) continuam só na descrição da tool. Expressá-las exigiria uma
-construção tipo `oneOf`/`anyOf` que o validador atual — deliberadamente um
-subconjunto simples de JSON Schema — não tem. Fica como mudança maior e
-separada.
+Aplicado em 39 pontos, em 8 módulos: `get_customer`/`update_customer`
+(`codigo_cliente_omie` ou `codigo_cliente_integracao`),
+`get_product`/`update_product` (3 vias: `codigo_produto`,
+`codigo_produto_integracao`, `codigo`), o ciclo do pedido de venda inteiro
+(`orderKey`/`fatKey`, 10 tools), o ciclo da OS (`osKey`, 6 tools),
+`create_purchase_order` (fornecedor por `nCodFor`/`cCodIntFor`/`cCnpjCpfFor`
+e cada item por `nCodProd`/`cCodIntProd`), PIX e boleto (6 tools),
+`create_stock_adjustment`/`get_product_stock` (`id_prod`/`cod_int`), e o lado
+financeiro completo — títulos AR/AP, `receive_account_receivable` e
+`pay_account_payable` (esta última é exatamente o caso que a própria
+descrição da tool já dizia: "without one of them the settlement has no
+target", mas que antes de 0.6.0 não era verificado).
 
-### 4.6 Modo demo — melhorado em 0.5.0, sem fabricar formato de resposta
+**Deliberadamente não aplicado:** `update_sales_order.det[].produto` (uma
+remoção de item via `ide.acao_item="E"` pode não precisar de dados de
+produto — aplicar a regra bloquearia uma chamada de update legítima);
+`create_invoice` (identificação por `nCodNF`, `cChaveNFe`, ou `nNF`+`serie`
+combinados — a combinação obrigatória de `nNF` com `serie` é uma regra
+condicional mais fina do que "pelo menos um destes", e a doc da Omie não
+confirma se `nIdPedido`/`cnpj_cpf` sozinhos também identificam um registro
+único); `get_bank_statement` (`nCodCC`/`cCodIntCC` marcados "opt" na doc da
+Omie sem confirmação de que um dos dois é obrigatório — pode ser que a
+ausência signifique "todas as contas"); e o campo condicional de
+`servicoPrestado` (se `nCodServico` estiver ausente, `cTribServ`/
+`cCodServMun`/`cCodServLC116`/`cDescServ` passam a ser obrigatórios — isso é
+"se A ausente, então B∧C∧D obrigatórios", não "pelo menos um de N").
 
-`DEMO_RESPONSES` continua com exemplos curados (9 tools) verificados contra
-os campos reais da Omie. Para as demais, o fallback deixou de ser
-`{demo:true, tool:name}` — que nunca falhava e por isso dava a impressão de
-que tudo funcionava — e passou a ecoar os argumentos validados e já
-processados por `param()` (`{ demo: true, tool, note, would_send }`).
+### 4.6 Modo demo — expandido em 0.6.0
 
-Isso resolve a parte "nunca falha" do problema (a validação continua rodando
-antes, então um argumento inválido ainda falha em modo demo) sem inventar um
-formato de resposta da Omie que este servidor não verificou — construir
-exemplos realistas para as ~70 tools restantes exigiria extrair o tipo de
-resposta documentado de cada endpoint, o que não foi feito aqui por decisão
-de escopo (o mesmo padrão de "não inferir" seguido no resto desta auditoria).
+`DEMO_RESPONSES` cresceu de 9 para **22 tools** curadas, todas verificadas
+contra o tipo de resposta real da Omie (ex.: `LancarPagamento` →
+`conta_pagar_lancar_pagamento_resposta`, `GerarPix` → `GerarPixResponse`,
+`IncluirPedCompra` → `com_pedido_incluir_response`) — não inventadas. O lote
+novo cobre o financeiro de baixa (`pay_account_payable`,
+`receive_account_receivable`, `create_account_payable`,
+`create_account_receivable`), o ciclo do pedido (`get_order_status`,
+`change_order_stage`, `invoice_sales_order`, `validate_order`), PIX
+(`create_pix`, `get_pix_status`), e `create_stock_adjustment`,
+`create_cash_entry`, `create_purchase_order`.
+
+Para as 60 tools restantes, o fallback (`{ demo: true, tool, note,
+would_send }`, adicionado em 0.5.0) continua ecoando os argumentos
+validados em vez de fingir um formato de resposta não verificado — estender
+a curadoria further exige extrair mais tipos `*_response`/`*_resposta`/
+`*Response` da referência da Omie, não adivinhar JSON plausível.
 
 ### 4.7 A suíte de testes — resolvido em 0.2.3, ampliado em 0.4.0/0.5.0
 

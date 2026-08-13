@@ -36,6 +36,7 @@ export const purchaseTools: OmieTool[] = [
             cEmailAprovador: { type: "string", description: "Email of the user who approves the order" },
           },
           required: ["cCodIntPed", "dDtPrevisao"],
+          anyOfRequired: ["nCodFor", "cCodIntFor", "cCnpjCpfFor"],
         },
         produtos_incluir: {
           type: "array",
@@ -62,6 +63,7 @@ export const purchaseTools: OmieTool[] = [
               cObs: { type: "string", description: "Item notes, printed on the order" },
             },
             required: ["nQtde", "nValUnit"],
+            anyOfRequired: ["nCodProd", "cCodIntProd"],
           },
         },
         frete_incluir: {
@@ -150,6 +152,7 @@ export const purchaseTools: OmieTool[] = [
         cCodIntPed: { type: "string", description: "Integration code (alternative)" },
         cNumero: { type: "string", description: "Purchase order number (alternative)" },
       },
+      anyOfRequired: ["nCodPed", "cCodIntPed", "cNumero"],
     },
   },
 ];

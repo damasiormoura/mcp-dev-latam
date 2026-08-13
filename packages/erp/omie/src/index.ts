@@ -41,14 +41,17 @@ import {
 import { omieRequest, validateArgs, CREDENTIALS_CONFIGURED } from "./omie.js";
 import { TOOLS, findTool } from "./tools/index.js";
 
-const VERSION = "0.5.0";
+const VERSION = "0.6.0";
 
 const DEMO_MODE = process.argv.includes("--demo") || process.env.MCP_DEMO === "true";
 
-// Curated, realistic responses for the tools most commonly exercised first —
-// shaped from the actual Omie response fields, not invented. The remaining
-// tools fall back to echoing the validated arguments (see DEMO_FALLBACK
-// below) rather than a shape this server hasn't verified against the API.
+// Curated, realistic responses — shaped from the actual Omie response *type*
+// fields (ConsultarContaPagar's own conta_pagar_lancar_pagamento_resposta,
+// GerarPix's GerarPixResponse, and so on), not invented. 22 of 82 tools have
+// one; the rest fall back to echoing the validated arguments (see
+// demoFallback below) rather than a shape this server hasn't verified against
+// the API — extending this further means pulling more response *types* from
+// the Omie reference, not guessing plausible-looking JSON.
 const DEMO_RESPONSES: Record<string, unknown> = {
   create_order: { nCodPed: 12345, cCodIntPed: "PED-DEMO-001", cNumPedido: "001234", dDtPrevisao: "2026-04-15", nValorTotal: 150.00, cStatusPedido: "Faturado", items: [{ cDescricao: "Produto Demo", nQuantidade: 1, nValorUnitario: 150.00 }] },
   list_customers: { clientes_cadastro: [{ codigo_cliente: 1001, razao_social: "Demo Comércio LTDA", cnpj_cpf: "12345678000190", email: "contato@demo.com" }], pagina: 1, total_de_paginas: 1, registros: 1, total_de_registros: 1 },
@@ -59,6 +62,22 @@ const DEMO_RESPONSES: Record<string, unknown> = {
   get_bank_accounts: { ListarContasCorrentes: [{ nCodCC: 4001, cDescricao: "Conta Demo Banco do Brasil", cCodBanco: "001" }] },
   list_payment_terms: { parcela_cadastro: [{ nCodigo: "999", cDescricao: "A vista", nParcelas: 1 }], pagina: 1, total_de_paginas: 1 },
   list_stock_locations: { locais: [{ codigo: 5001, descricao: "Almoxarifado Central" }], nPagina: 1, nTotPaginas: 1 },
+
+  // Added when extending demo-mode coverage for section 4.6 — each shaped
+  // from the endpoint's real *_response / *_resposta / *Response type.
+  pay_account_payable: { codigo_lancamento: 3001, codigo_lancamento_integracao: "AP-DEMO-001", codigo_baixa: 7001, codigo_baixa_integracao: "BX-DEMO-001", liquidado: "S", valor_baixado: 100.00, codigo_status: "0", descricao_status: "Processo executado com sucesso." },
+  create_account_payable: { codigo_lancamento_omie: 3001, codigo_lancamento_integracao: "AP-DEMO-001", codigo_status: "0", descricao_status: "Processo executado com sucesso." },
+  receive_account_receivable: { codigo_lancamento: 3002, codigo_lancamento_integracao: "AR-DEMO-001", codigo_baixa: 7002, codigo_baixa_integracao: "BX-DEMO-002", liquidado: "S", valor_baixado: 150.00, codigo_status: "0", descricao_status: "Processo executado com sucesso." },
+  create_account_receivable: { codigo_lancamento_omie: 3002, codigo_lancamento_integracao: "AR-DEMO-001", codigo_status: "0", descricao_status: "Processo executado com sucesso." },
+  get_order_status: { codigo_pedido: 12345, codigo_pedido_integracao: "PED-DEMO-001", numero_pedido: "001234", etapa: "60", cancelada: "N", faturada: "S", ambiente: "P", valor_total_pedido: 150.00 },
+  change_order_stage: { codigo_pedido: 12345, codigo_pedido_integracao: "PED-DEMO-001", numero_pedido: "001234", codigo_status: "0", descricao_status: "Processo executado com sucesso." },
+  invoice_sales_order: { cCodIntPed: "PED-DEMO-001", nCodPed: 12345, cCodStatus: "0", cDescStatus: "Processo executado com sucesso." },
+  validate_order: { cCodIntPed: "PED-DEMO-001", nCodPed: 12345, cCodStatus: "0", cDescStatus: "Pedido válido para faturamento." },
+  create_pix: { nIdPix: 8001, cCodIntPix: "PIX-DEMO-001", nCodTitulo: 3002, cUrlPix: "https://demo.omie.com.br/pix/qrcode/8001.pdf", cQrCode: "00020126580014BR.GOV.BCB.PIX-DEMO-QR-CODE", cCopiaCola: "00020126580014BR.GOV.BCB.PIX-DEMO-COPIA-COLA", cCodStatus: "0", cDescStatus: "Processo executado com sucesso.", cCliente: 1001 },
+  get_pix_status: { nIdPix: 8001, cCodIntPix: "PIX-DEMO-001", nCodTitulo: 3002, vValor: 1.99, cStatus: "LIQUIDADO" },
+  create_stock_adjustment: { codigo_status: "0", descricao_status: "Processo executado com sucesso.", id_movest: 9001, id_ajuste: 9001 },
+  create_cash_entry: { nCodLanc: 6001, cCodIntLanc: "CC-DEMO-001", cCodStatus: "0", cDesStatus: "Processo executado com sucesso." },
+  create_purchase_order: { nCodPed: 5001, cCodIntPed: "PC-DEMO-001", cCodStatus: "0", cDescStatus: "Processo executado com sucesso.", cNumero: "005001" },
 };
 
 /**

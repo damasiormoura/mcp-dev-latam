@@ -9,12 +9,14 @@ const orderKey = {
   codigo_pedido: { type: "number", description: "Omie order ID" },
   codigo_pedido_integracao: { type: "string", description: "Integration order code (alternative)" },
 } as const;
+const orderKeyRequired = ["codigo_pedido", "codigo_pedido_integracao"] as const;
 
 /** The billing endpoint spells the same key differently. */
 const fatKey = {
   nCodPed: { type: "number", description: "Omie order ID" },
   cCodIntPed: { type: "string", description: "Integration order code (alternative)" },
 } as const;
+const fatKeyRequired = ["nCodPed", "cCodIntPed"] as const;
 
 export const salesTools: OmieTool[] = [
   {
@@ -83,6 +85,7 @@ export const salesTools: OmieTool[] = [
                   percentual_desconto: { type: "number", description: "Item discount percent" },
                 },
                 required: ["quantidade", "valor_unitario"],
+                anyOfRequired: ["codigo_produto", "codigo_produto_integracao"],
               },
               inf_adic: {
                 type: "object",
@@ -182,7 +185,7 @@ export const salesTools: OmieTool[] = [
     description: "Consult a specific sales order by ID or integration code in Omie ERP",
     path: ORDER,
     call: "ConsultarPedido",
-    inputSchema: { type: "object", properties: orderKey },
+    inputSchema: { type: "object", properties: orderKey, anyOfRequired: orderKeyRequired },
   },
   {
     name: "update_sales_order",
@@ -206,6 +209,7 @@ export const salesTools: OmieTool[] = [
             codigo_parcela: { type: "string", description: "Payment term code" },
             qtde_parcelas: { type: "number", description: "Number of installments" },
           },
+          anyOfRequired: orderKeyRequired,
         },
         det: {
           type: "array",
@@ -252,7 +256,7 @@ export const salesTools: OmieTool[] = [
       "cancelled, denied or still open. Cheaper than get_sales_order when all you need is the state.",
     path: ORDER,
     call: "StatusPedido",
-    inputSchema: { type: "object", properties: orderKey },
+    inputSchema: { type: "object", properties: orderKey, anyOfRequired: orderKeyRequired },
   },
   {
     name: "change_order_stage",
@@ -268,6 +272,7 @@ export const salesTools: OmieTool[] = [
         etapa: { type: "string", description: "Target stage: 10=Pedido, 20=Separar, 50=Faturar, 60=Faturado (list_order_stages for the configured set)" },
       },
       required: ["etapa"],
+      anyOfRequired: orderKeyRequired,
     },
   },
   {
@@ -321,7 +326,7 @@ export const salesTools: OmieTool[] = [
     description: "Delete a sales order in Omie ERP (ExcluirPedido). Only works while the order is not billed.",
     path: ORDER,
     call: "ExcluirPedido",
-    inputSchema: { type: "object", properties: orderKey },
+    inputSchema: { type: "object", properties: orderKey, anyOfRequired: orderKeyRequired },
   },
   {
     name: "return_order",
@@ -347,6 +352,7 @@ export const salesTools: OmieTool[] = [
           },
         },
       },
+      anyOfRequired: orderKeyRequired,
     },
   },
   {
@@ -357,21 +363,21 @@ export const salesTools: OmieTool[] = [
       "failing mid-billing.",
     path: FAT,
     call: "ValidarPedidoVenda",
-    inputSchema: { type: "object", properties: fatKey },
+    inputSchema: { type: "object", properties: fatKey, anyOfRequired: fatKeyRequired },
   },
   {
     name: "invoice_sales_order",
     description: "Generate an invoice (NF) from an existing sales order in Omie ERP",
     path: FAT,
     call: "FaturarPedidoVenda",
-    inputSchema: { type: "object", properties: fatKey },
+    inputSchema: { type: "object", properties: fatKey, anyOfRequired: fatKeyRequired },
   },
   {
     name: "cancel_order",
     description: "Cancel a sales order in Omie ERP (CancelarPedidoVenda)",
     path: FAT,
     call: "CancelarPedidoVenda",
-    inputSchema: { type: "object", properties: fatKey },
+    inputSchema: { type: "object", properties: fatKey, anyOfRequired: fatKeyRequired },
   },
   {
     name: "list_order_stages",

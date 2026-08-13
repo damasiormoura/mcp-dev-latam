@@ -71,7 +71,7 @@ const MIN_ARGS: Record<string, unknown> = {
     codigo_lancamento_integracao: "AP-1", codigo_cliente_fornecedor: 5,
     data_vencimento: "01/01/2027", valor_documento: 100, codigo_categoria: "2.04.01",
   },
-  pay_account_payable: { codigo_baixa_integracao: "BX-1", valor: 100, data: "01/01/2027", codigo_conta_corrente: 3 },
+  pay_account_payable: { codigo_lancamento: 1, codigo_baixa_integracao: "BX-1", valor: 100, data: "01/01/2027", codigo_conta_corrente: 3 },
   cancel_payment: { codigo_baixa: 7 },
   create_account_receivable: {
     codigo_lancamento_integracao: "AR-1", codigo_cliente_fornecedor: 5,
@@ -90,6 +90,37 @@ const MIN_ARGS: Record<string, unknown> = {
     id_prod: 2, data: "01/01/2027", tipo: "SLD", origem: "AJU",
     motivo: "INV", quan: 5, valor: 10, obs: "inventory",
   },
+  // The remaining entries below identify a record via one of the fields an
+  // `anyOfRequired` schema now demands — see the "cross-field identification"
+  // describe block for the validation itself.
+  get_customer: { codigo_cliente_omie: 1 },
+  update_customer: { codigo_cliente_omie: 1 },
+  get_product: { codigo_produto: 1 },
+  update_product: { codigo_produto: 1 },
+  get_sales_order: { codigo_pedido: 1 },
+  get_order_status: { codigo_pedido: 1 },
+  delete_order: { codigo_pedido: 1 },
+  return_order: { codigo_pedido: 1 },
+  validate_order: { nCodPed: 1 },
+  invoice_sales_order: { nCodPed: 1 },
+  cancel_order: { nCodPed: 1 },
+  get_purchase_order: { nCodPed: 1 },
+  get_service_order: { nCodOS: 1 },
+  validate_service_order: { nCodOS: 1 },
+  invoice_service_order: { nCodOS: 1 },
+  cancel_service_order: { nCodOS: 1 },
+  get_account_receivable: { codigo_lancamento_omie: 1 },
+  get_account_payable: { codigo_lancamento_omie: 1 },
+  update_account_receivable: { codigo_lancamento_omie: 1 },
+  update_account_payable: { codigo_lancamento_omie: 1 },
+  update_cash_entry: { cCodIntLanc: "CC-1" },
+  delete_cash_entry: { nCodLanc: 1 },
+  get_pix_status: { nIdPix: 1 },
+  cancel_pix: { nIdPix: 1 },
+  generate_boleto: { nCodTitulo: 1 },
+  get_boleto: { nCodTitulo: 1 },
+  cancel_boleto: { nCodTitulo: 1 },
+  get_product_stock: { id_prod: 1 },
 };
 
 async function call(name: string, args: unknown = {}) {
@@ -355,6 +386,37 @@ describe("mcp-omie", () => {
       expect(body.tool).toBe("list_salespeople");
       expect(body.would_send).toMatchObject({ pagina: 2, registros_por_pagina: 50 });
     });
+
+    it("uses the curated response — not the fallback — for a section-4.6 addition", async () => {
+      const result = await callToolHandler({
+        params: { name: "pay_account_payable", arguments: { codigo_lancamento: 1, valor: 100, data: "01/01/2027", codigo_conta_corrente: 3 } },
+      });
+      const body = JSON.parse(result.content[0].text);
+
+      expect(body.demo).not.toBe(true);
+      expect(body).toMatchObject({ codigo_baixa: 7001, codigo_status: "0" });
+    });
+
+    it("curates the 22 tools with a verified response type (not the echo fallback)", async () => {
+      // DEMO_RESPONSES isn't exported, so this checks indirectly: a curated
+      // response never carries the fallback's `demo`/`would_send` markers.
+      const curatedNames = [
+        "create_order", "list_customers", "create_customer", "list_orders", "list_products",
+        "get_financial", "get_bank_accounts", "list_payment_terms", "list_stock_locations",
+        "pay_account_payable", "create_account_payable", "receive_account_receivable",
+        "create_account_receivable", "get_order_status", "change_order_stage",
+        "invoice_sales_order", "validate_order", "create_pix", "get_pix_status",
+        "create_stock_adjustment", "create_cash_entry", "create_purchase_order",
+      ];
+      expect(curatedNames).toHaveLength(22);
+
+      for (const name of curatedNames) {
+        const result = await callToolHandler({ params: { name, arguments: MIN_ARGS[name] ?? {} } });
+        const body = JSON.parse(result.content[0].text);
+        expect(body.demo, name).not.toBe(true);
+        expect(body.would_send, name).toBeUndefined();
+      }
+    });
   });
 
   describe("argument validation", () => {
@@ -395,6 +457,70 @@ describe("mcp-omie", () => {
 
       expect(result.isError).toBe(true);
       expect(result.content[0].text).toContain("Unknown tool");
+    });
+  });
+
+  describe("cross-field identification (anyOfRequired)", () => {
+    it("rejects get_customer given neither identifying field", async () => {
+      const result = await callToolHandler({ params: { name: "get_customer", arguments: {} } });
+
+      expect(result.isError).toBe(true);
+      expect(result.content[0].text).toContain(
+        "arguments must include at least one of: codigo_cliente_omie, codigo_cliente_integracao"
+      );
+      expect(mockFetch).not.toHaveBeenCalled();
+    });
+
+    it("accepts get_customer given only the integration code", async () => {
+      const { body } = await call("get_customer", { codigo_cliente_integracao: "CLI-1" });
+      expect(body.param[0]).toEqual({ codigo_cliente_integracao: "CLI-1" });
+    });
+
+    it("rejects create_order's product identification when det[].produto has neither key", async () => {
+      const result = await callToolHandler({
+        params: {
+          name: "create_order",
+          arguments: {
+            cabecalho: { codigo_cliente: 1, codigo_pedido_integracao: "P", data_previsao: "01/01/2027", etapa: "10", codigo_parcela: "999" },
+            det: [{ produto: { quantidade: 1, valor_unitario: 10 } }],
+            informacoes_adicionais: { codigo_categoria: "1.01.01", codigo_conta_corrente: 3 },
+          },
+        },
+      });
+
+      expect(result.isError).toBe(true);
+      expect(result.content[0].text).toContain(
+        "det[0].produto must include at least one of: codigo_produto, codigo_produto_integracao"
+      );
+    });
+
+    it("rejects pay_account_payable with a settlement amount but no title to settle", async () => {
+      const result = await callToolHandler({
+        params: { name: "pay_account_payable", arguments: { valor: 100, data: "01/01/2027", codigo_conta_corrente: 3 } },
+      });
+
+      expect(result.isError).toBe(true);
+      expect(result.content[0].text).toContain(
+        "arguments must include at least one of: codigo_lancamento, codigo_lancamento_integracao"
+      );
+      expect(mockFetch).not.toHaveBeenCalled();
+    });
+
+    it("rejects create_purchase_order when the supplier can't be identified", async () => {
+      const result = await callToolHandler({
+        params: {
+          name: "create_purchase_order",
+          arguments: {
+            cabecalho_incluir: { cCodIntPed: "PC-1", dDtPrevisao: "01/01/2027" },
+            produtos_incluir: [{ nCodProd: 1, nQtde: 1, nValUnit: 10 }],
+          },
+        },
+      });
+
+      expect(result.isError).toBe(true);
+      expect(result.content[0].text).toContain(
+        "cabecalho_incluir must include at least one of: nCodFor, cCodIntFor, cCnpjCpfFor"
+      );
     });
   });
 });
