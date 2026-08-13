@@ -11,9 +11,14 @@ _Data: 2026-08-12 — versão auditada: `mcp-omie` 0.2.2 (30 tools, `src/index.t
 >   **52 tools novas**, servidor passa de 30 para 82. As definições viraram
 >   declarativas (`path`/`call` junto do schema, em `src/tools/*`), então o
 >   teste de contrato deriva as expectativas das próprias definições.
-> - **Aberto:** seção 2 (7 filtros inválidos), seção 4 (backoff/425, `faultstring`,
->   demo mode) e o que restou da seção 5 — CRM, contador, ordem de produção,
->   contratos de serviço, tabelas de preço.
+> - **0.4.0** — a **seção 2 foi fechada**: os 7 filtros inexistentes foram
+>   substituídos pelos campos documentados, `pay_account_payable` passou a
+>   tipar `codigo_baixa` como o inteiro da Omie (com `codigo_baixa_integracao`
+>   para o código do integrador) e o teste de contrato agora trava, tool a
+>   tool, os nomes proibidos e os obrigatórios.
+> - **Aberto:** seção 4 (backoff/425, `faultstring` estruturado, demo mode
+>   cobrindo 9 de 82) e o que restou da seção 5 — CRM, contador, ordem de
+>   produção, contratos de serviço, tabelas de preço.
 
 Fonte da verdade: as páginas de referência publicadas pela Omie em
 `https://app.omie.com.br/api/v1/<recurso>/` (lista em
@@ -30,7 +35,7 @@ endpoint.
 | Situação | Tools | |
 |---|---|---|
 | ❌ **Quebradas** — método inexistente ou payload incompatível | 7 | ✔ corrigidas em 0.2.3 |
-| ⚠️ Chamada correta, **parâmetro inválido** (filtro ignorado ou erro) | 7 | aberto |
+| ⚠️ Chamada correta, **parâmetro inválido** (filtro ignorado ou erro) | 7 | ✔ corrigidos em 0.4.0 |
 | ✅ Conformes (ajustes opcionais) | 16 | — |
 | 🏷️ Nome enganoso — o agente escolhe a tool errada | 3 (sobrepõe as linhas acima) | aberto |
 
@@ -218,7 +223,14 @@ consulta é `nCodNF`.
 
 ---
 
-## 2. Filtros inválidos (P1 — falha silenciosa)
+## 2. Filtros inválidos (P1 — falha silenciosa) — corrigidos em 0.4.0
+
+O diagnóstico abaixo descreve o estado até 0.3.0. Cada campo foi substituído
+pelo nome documentado e o teste de contrato passou a travar os dois lados: os
+nomes que não podem voltar (`dDtEmiInicial`, `dDtVencDe`, `status_titulo`,
+`etapa` em OS, `cExibirTodos`, `itens` em `AlterarPedidoVenda`) e os que
+precisam existir (`filtrar_por_emissao_de`, `filtrar_por_status`,
+`filtrar_por_etapa`, `cExibeTodos`, `det`).
 
 Um campo desconhecido no `param` da Omie, no melhor caso, é ignorado — a
 requisição volta 200 e o agente reporta um recorte que nunca foi aplicado.

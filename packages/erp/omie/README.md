@@ -202,6 +202,24 @@ against 0.2.2 need updating:
 **0.3.0** adds tools only — no existing tool changed its endpoint, method or
 accepted arguments.
 
+**0.4.0** corrects filter parameters that the API never accepted. These calls
+used to return `200` with the filter silently dropped, so a narrowed request
+came back as the full recordset:
+
+| Tool | Removed (not in the API) | Use instead |
+|---|---|---|
+| `get_financial` | `dDtEmiInicial`, `dDtEmiFinal` | `filtrar_por_emissao_de` / `_ate` |
+| `list_accounts_payable` | `dDtVencDe`, `dDtVencAte`, `status_titulo` | `filtrar_por_status`; for due dates use `list_financial_movements` |
+| `list_service_orders` | `etapa` | `filtrar_por_etapa` |
+| `get_stock_position` | `cExibirTodos` | `cExibeTodos` |
+| `update_sales_order` | `itens` | `det` (same shape as `create_order.det`) |
+| `list_financial_movements` | `cNatureza: "T"` | omit `cNatureza` for both natures |
+
+`pay_account_payable` also changes: `codigo_baixa` is the integer Omie assigns,
+so the caller's own reference now goes in `codigo_baixa_integracao` (string).
+It is no longer required — `valor`, `data` and `codigo_conta_corrente` are —
+and `juros`, `desconto`, `multa` and `conciliar_documento` are now available.
+
 Arguments are checked against each tool's schema before the request leaves, so
 a missing required field returns a local message naming the field instead of an
 opaque Omie `500`.

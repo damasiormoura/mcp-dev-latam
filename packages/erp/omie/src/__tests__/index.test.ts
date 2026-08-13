@@ -215,6 +215,87 @@ describe("mcp-omie", () => {
     });
   });
 
+  /**
+   * Audit section 2: these tools declared filter fields that do not exist in
+   * the Omie request types. A bad filter is not an error there — the call
+   * returns 200 with the filter silently dropped, so the agent reports a
+   * recordset that was never narrowed. Each name below was checked against the
+   * documented request type for its endpoint.
+   */
+  describe("filter parameters exist in the Omie contract", () => {
+    const FORBIDDEN: Record<string, string[]> = {
+      get_financial: ["dDtEmiInicial", "dDtEmiFinal"],
+      list_accounts_payable: ["dDtVencDe", "dDtVencAte", "status_titulo"],
+      list_service_orders: ["etapa"],
+      get_stock_position: ["cExibirTodos"],
+      update_sales_order: ["itens"],
+    };
+
+    const REQUIRED: Record<string, string[]> = {
+      get_financial: ["filtrar_por_emissao_de", "filtrar_por_emissao_ate", "filtrar_por_status"],
+      list_accounts_payable: ["filtrar_por_status", "filtrar_por_emissao_de"],
+      list_service_orders: ["filtrar_por_etapa", "filtrar_por_status"],
+      get_stock_position: ["cExibeTodos"],
+      update_sales_order: ["det"],
+      list_financial_movements: ["dDtVencDe", "dDtVencAte"],
+    };
+
+    it("drops every field the API does not define", async () => {
+      const tools = await loadTools();
+      for (const [name, fields] of Object.entries(FORBIDDEN)) {
+        const props = (tools.find((t) => t.name === name)!.inputSchema as any).properties;
+        for (const f of fields) expect(props, `${name}.${f}`).not.toHaveProperty(f);
+      }
+    });
+
+    it("declares the documented replacements", async () => {
+      const tools = await loadTools();
+      for (const [name, fields] of Object.entries(REQUIRED)) {
+        const props = (tools.find((t) => t.name === name)!.inputSchema as any).properties;
+        for (const f of fields) expect(props, `${name}.${f}`).toHaveProperty(f);
+      }
+    });
+
+    it("cNatureza offers only the two natures the API documents", async () => {
+      const tools = await loadTools();
+      const props = (tools.find((t) => t.name === "list_financial_movements")!.inputSchema as any).properties;
+
+      expect(props.cNatureza.enum).toEqual(["P", "R"]);
+    });
+
+    it("forwards the corrected filters verbatim", async () => {
+      const { body } = await call("get_financial", { filtrar_por_emissao_de: "01/01/2027", filtrar_por_status: "ATRASADO" });
+
+      expect(body.param[0]).toMatchObject({
+        pagina: 1,
+        registros_por_pagina: 50,
+        filtrar_por_emissao_de: "01/01/2027",
+        filtrar_por_status: "ATRASADO",
+      });
+    });
+  });
+
+  describe("pay_account_payable settlement contract", () => {
+    it("types codigo_baixa as the Omie integer and exposes the integration code separately", async () => {
+      const tools = await loadTools();
+      const props = (tools.find((t) => t.name === "pay_account_payable")!.inputSchema as any).properties;
+
+      expect(props.codigo_baixa.type).toBe("number");
+      expect(props.codigo_baixa_integracao.type).toBe("string");
+      expect(props).toHaveProperty("juros");
+      expect(props).toHaveProperty("desconto");
+      expect(props).toHaveProperty("multa");
+    });
+
+    it("no longer requires codigo_baixa, which the caller cannot know", async () => {
+      const tools = await loadTools();
+      const schema = tools.find((t) => t.name === "pay_account_payable")!.inputSchema as any;
+
+      expect(schema.required).not.toContain("codigo_baixa");
+      expect(schema.required).toEqual(expect.arrayContaining(["valor", "data", "codigo_conta_corrente"]));
+    });
+  });
+
   describe("pagination defaults", () => {
     it("applies snake-case defaults without clobbering an explicit page", async () => {
       const { body } = await call("list_customers", { pagina: 3 });
