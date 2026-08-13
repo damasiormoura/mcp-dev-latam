@@ -146,6 +146,39 @@ optional scope it is only included when explicitly requested — if the client
 ever narrows its scope request, the audience silently disappears and every call
 starts failing verification.
 
+### Social login auto-provisions users by default
+
+Adding a social identity provider (Google, GitHub, …) so operators sign in with
+an existing account is an obvious improvement — no password to manage, and the
+provider's MFA comes along. Configured naively it is a **downgrade**.
+
+A realm's `registrationAllowed: false` governs *local* self-registration only.
+Brokered login takes a different path: the default `first broker login` flow
+contains a `Create User If Unique` step that **creates a Keycloak user for any
+account that authenticates**. With a social provider enabled and nothing else
+changed, anyone with an account at that provider can sign in, get provisioned,
+and receive a token carrying the audience your MCP server accepts.
+
+Copy the flow, set `Create User If Unique` to `DISABLED`, and assign the copy to
+the provider. Unknown accounts then have to match an existing user instead of
+becoming one.
+
+Two more things worth setting on the same pass:
+
+- **A domain restriction at the provider.** Google's `hostedDomain` (and the
+  equivalent elsewhere) rejects accounts outside your organisation before the
+  request reaches the IdP. For Google specifically, setting the OAuth consent
+  screen's user type to **Internal** — only possible when the project belongs to
+  a Workspace organisation — restricts it a layer earlier still.
+- **`Verify existing account by Email` to `DISABLED` if the realm has no SMTP
+  server.** Account linking otherwise stalls on an email that cannot be sent.
+  Re-authentication with the existing password is the alternative, and is the
+  better prompt for a one-time link anyway.
+
+Note that the linking step matches on **email**. An account whose provider email
+differs from the one on the existing user will not match, so update the user's
+email before the first sign-in attempt.
+
 ### Other footguns
 
 - `kcadm.sh set-password` sets a **temporary** password by default, forcing a
