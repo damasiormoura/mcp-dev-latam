@@ -27,9 +27,10 @@ COPY package.json package-lock.json ./
 RUN npm ci
 
 COPY tsconfig.json ./
-# Only the runtime source file — __tests__ is intentionally excluded so the
-# build image never needs vitest (which isn't a dependency of this package).
-COPY src/index.ts ./src/index.ts
+# The whole source tree: the server is split across src/tools/*. src/__tests__
+# is excluded by .dockerignore, so the build image still never needs vitest
+# (which isn't a dependency of this package).
+COPY src/ ./src/
 RUN npm run build
 
 # Drop devDependencies (typescript, @types/node) before it's copied forward.
