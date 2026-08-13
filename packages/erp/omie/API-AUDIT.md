@@ -2,10 +2,18 @@
 
 _Data: 2026-08-12 — versão auditada: `mcp-omie` 0.2.2 (30 tools, `src/index.ts`)._
 
-> **Status:** as 7 tools da seção 1 foram corrigidas em **0.2.3** — schemas
-> reescritos conforme o contrato documentado, mais validação de argumentos
-> antes do envio e teste de contrato cobrindo as 30 tools. As seções 2, 4 e 5
-> continuam abertas.
+> **Status por versão:**
+>
+> - **0.2.3** — as 7 tools quebradas da seção 1 foram corrigidas: schemas
+>   reescritos conforme o contrato documentado, validação de argumentos antes
+>   do envio e teste de contrato cobrindo as 30 tools.
+> - **0.3.0** — a seção 5 (tools ausentes) foi implementada em grande parte:
+>   **52 tools novas**, servidor passa de 30 para 82. As definições viraram
+>   declarativas (`path`/`call` junto do schema, em `src/tools/*`), então o
+>   teste de contrato deriva as expectativas das próprias definições.
+> - **Aberto:** seção 2 (7 filtros inválidos), seção 4 (backoff/425, `faultstring`,
+>   demo mode) e o que restou da seção 5 — CRM, contador, ordem de produção,
+>   contratos de serviço, tabelas de preço.
 
 Fonte da verdade: as páginas de referência publicadas pela Omie em
 `https://app.omie.com.br/api/v1/<recurso>/` (lista em
@@ -410,7 +418,17 @@ sessões que somem sem `DELETE` ficam retidas até o restart.
 
 ---
 
-## 5. Tools que poderiam ser desenvolvidas
+## 5. Tools que poderiam ser desenvolvidas — em grande parte entregue em 0.3.0
+
+> **0.3.0 entregou 52 das tools abaixo.** Marcadas com ✅ as que existem hoje.
+> O que ficou de fora, e por quê: **CRM** (`/crm/*`, 19 endpoints) é um domínio
+> distinto do ERP e provavelmente merece servidor próprio; **contador**, **ordem
+> de produção**, **contratos de serviço**, **tabelas de preço**, **requisição de
+> compra**, **nota de entrada** e **anexos** seguem na fila.
+>
+> Entregue por bloco: financeiro AR/AP (11 ✅), PIX + boleto (8 ✅), ciclo do
+> pedido de venda (9 ✅), serviços/OS (8 ✅), cadastros e apoio (10 ✅), estoque
+> (4 ✅), compras (1 ✅), NFS-e (1 ✅).
 
 O catálogo cobre 20 dos ~150 endpoints da Omie. As lacunas abaixo estão
 ordenadas por valor para um agente, não por facilidade.
@@ -423,14 +441,14 @@ nem baixar um recebimento.
 
 | Tool sugerida | Endpoint / método |
 |---|---|
-| `create_account_receivable` | `/financas/contareceber/ IncluirContaReceber` |
-| `receive_account_receivable` | `/financas/contareceber/ LancarRecebimento` |
-| `update_account_receivable` | `AlterarContaReceber` / `UpsertContaReceber` |
-| `cancel_receipt` | `CancelarRecebimento` |
+| ✅ `create_account_receivable` | `/financas/contareceber/ IncluirContaReceber` |
+| ✅ `receive_account_receivable` | `/financas/contareceber/ LancarRecebimento` |
+| ✅ `update_account_receivable` | `AlterarContaReceber` / `UpsertContaReceber` |
+| ✅ `cancel_receipt` | `CancelarRecebimento` |
 | `reconcile_receipt` | `ConciliarRecebimento` / `DesconciliarRecebimento` |
-| `update_account_payable` | `/financas/contapagar/ AlterarContaPagar` |
-| `cancel_payment` | `CancelarPagamento` |
-| `list_cash_entries` / `update` / `delete` | `/financas/contacorrentelancamentos/ ListarLancCC`, `AlterarLancCC`, `ExcluirLancCC` (hoje só existe o incluir) |
+| ✅ `update_account_payable` | `/financas/contapagar/ AlterarContaPagar` |
+| ✅ `cancel_payment` | `CancelarPagamento` |
+| ✅ `list_cash_entries` / `update` / `delete` | `/financas/contacorrentelancamentos/ ListarLancCC`, `AlterarLancCC`, `ExcluirLancCC` (hoje só existe o incluir) |
 
 ### 5.2 Cobrança — PIX e boleto
 
@@ -438,10 +456,10 @@ Provavelmente o maior ganho por linha de código para agentes de cobrança:
 
 | Tool | Endpoint / método |
 |---|---|
-| `create_pix` / `get_pix_qrcode` / `get_pix_status` / `cancel_pix` | `/financas/pix/ GerarPix`, `GerarQrCodePix`, `ObterStatusPix`, `ListarPix`, `CancelarPix` |
-| `generate_boleto` / `get_boleto` / `cancel_boleto` / `extend_boleto` | `/financas/contareceberboleto/ GerarBoleto`, `ObterBoleto`, `CancelarBoleto`, `ProrrogarBoleto` |
+| ✅ `create_pix` / `get_pix_qrcode` / `get_pix_status` / `cancel_pix` | `/financas/pix/ GerarPix`, `GerarQrCodePix`, `ObterStatusPix`, `ListarPix`, `CancelarPix` |
+| ✅ `generate_boleto` / `get_boleto` / `cancel_boleto` / `extend_boleto` | `/financas/contareceberboleto/ GerarBoleto`, `ObterBoleto`, `CancelarBoleto`, `ProrrogarBoleto` |
 | `get_boleto_url` | `/financas/pesquisartitulos/ ObterURLBoleto` |
-| `get_finance_summary` | `/financas/resumo/ ObterResumoFinancas`, `ObterListaEmAberto` |
+| ✅ `get_finance_summary` | `/financas/resumo/ ObterResumoFinancas`, `ObterListaEmAberto` |
 
 ### 5.3 Ciclo de vida do pedido de venda
 
@@ -449,14 +467,14 @@ Hoje dá para criar, alterar, consultar e faturar. Falta tudo entre isso:
 
 | Tool | Método |
 |---|---|
-| `get_order_status` | `/produtos/pedido/ StatusPedido` |
-| `change_order_stage` | `TrocarEtapaPedido` |
-| `simulate_order_taxes` | `SimularImpostos` — permite cotar antes de gravar |
-| `validate_order` | `/produtos/pedidovendafat/ ValidarPedidoVenda` — valida antes de faturar; reduz muito o retrabalho do agente |
-| `cancel_order` | `/produtos/pedidovendafat/ CancelarPedidoVenda` |
-| `delete_order` / `return_order` | `ExcluirPedido` / `DevolverPedido` |
-| `list_order_stages` | `/produtos/pedidoetapas/ ListarEtapasPedido` e `/produtos/etapafat/` |
-| `get_invoice_pdf` / `get_invoice_xml` | `/produtos/dfedocs/ ObterNfe`, `ObterDanfeSimp` — pedido recorrente e hoje impossível |
+| ✅ `get_order_status` | `/produtos/pedido/ StatusPedido` |
+| ✅ `change_order_stage` | `TrocarEtapaPedido` |
+| ✅ `simulate_order_taxes` | `SimularImpostos` — permite cotar antes de gravar |
+| ✅ `validate_order` | `/produtos/pedidovendafat/ ValidarPedidoVenda` — valida antes de faturar; reduz muito o retrabalho do agente |
+| ✅ `cancel_order` | `/produtos/pedidovendafat/ CancelarPedidoVenda` |
+| ✅ `delete_order` / `return_order` | `ExcluirPedido` / `DevolverPedido` |
+| ✅ `list_order_stages` | `/produtos/pedidoetapas/ ListarEtapasPedido` e `/produtos/etapafat/` |
+| ✅ `get_invoice_pdf` / `get_invoice_xml` | `/produtos/dfedocs/ ObterNfe`, `ObterDanfeSimp` — pedido recorrente e hoje impossível |
 | `import_nfe` | `/produtos/nfe/ ImportarNFe` |
 
 ### 5.4 Serviços
@@ -465,11 +483,11 @@ Hoje dá para criar, alterar, consultar e faturar. Falta tudo entre isso:
 
 | Tool | Método |
 |---|---|
-| `invoice_service_order` | `/servicos/osp/ FaturarOS` |
-| `validate_service_order` / `cancel_service_order` | `ValidarOS` / `CancelarOS` |
-| `get_service_order` / `update_service_order` / `change_os_stage` | `/servicos/os/ ConsultarOS`, `AlterarOS`, `StatusOS`, `TrocarEtapaOS` |
-| `list_services` / `create_service` | `/servicos/servico/` |
-| `list_nfse` | `/servicos/nfse/ ListarNFSEs` |
+| ✅ `invoice_service_order` | `/servicos/osp/ FaturarOS` |
+| ✅ `validate_service_order` / `cancel_service_order` | `ValidarOS` / `CancelarOS` |
+| ✅ `get_service_order` / `update_service_order` / `change_os_stage` | `/servicos/os/ ConsultarOS`, `AlterarOS`, `StatusOS`, `TrocarEtapaOS` |
+| ✅ `list_services` / `create_service` | `/servicos/servico/` |
+| ✅ `list_nfse` | `/servicos/nfse/ ListarNFSEs` |
 | `create_service_contract` | `/servicos/contrato/` — já consta no roadmap v0.3 |
 
 ### 5.5 Cadastros — CRUD incompleto
@@ -479,11 +497,11 @@ importante para agentes — **upsert**:
 
 | Tool | Método |
 |---|---|
-| `get_customer` / `update_customer` / `upsert_customer` | `ConsultarCliente`, `AlterarCliente`, `UpsertCliente`, `UpsertClienteCpfCnpj` |
-| `get_product` / `update_product` / `upsert_product` | `ConsultarProduto`, `AlterarProduto`, `UpsertProduto` |
-| `list_payment_terms` | `/geral/parcelas/ ListarParcelas` — **necessário**: `codigo_parcela` é obrigatório no pedido de venda e hoje o agente não tem como descobrir os valores válidos |
-| `list_stock_locations` | `/estoque/local/ ListarLocaisEstoque` — mesma situação para `codigo_local_estoque` |
-| `list_salespeople` | `/geral/vendedores/` |
+| ✅ `get_customer` / `update_customer` / `upsert_customer` | `ConsultarCliente`, `AlterarCliente`, `UpsertCliente`, `UpsertClienteCpfCnpj` |
+| ✅ `get_product` / `update_product` / `upsert_product` | `ConsultarProduto`, `AlterarProduto`, `UpsertProduto` |
+| ✅ `list_payment_terms` | `/geral/parcelas/ ListarParcelas` — **necessário**: `codigo_parcela` é obrigatório no pedido de venda e hoje o agente não tem como descobrir os valores válidos |
+| ✅ `list_stock_locations` | `/estoque/local/ ListarLocaisEstoque` — mesma situação para `codigo_local_estoque` |
+| ✅ `list_salespeople` | `/geral/vendedores/` |
 | `list_price_tables` | `/produtos/tabelaprecos/` |
 | `create_category` | `/geral/categorias/ IncluirCategoria` |
 
@@ -495,8 +513,8 @@ obrigatórios.
 
 | Tool | Endpoint |
 |---|---|
-| `list_stock_movements` / `get_product_stock` | `/estoque/consulta/ ListarMovimentoEstoque`, `PosicaoEstoque` |
-| `list_stock_adjustments` / `delete_stock_adjustment` | `/estoque/ajuste/ ListarAjusteEstoque`, `ExcluirAjusteEstoque` |
+| ✅ `list_stock_movements` / `get_product_stock` | `/estoque/consulta/ ListarMovimentoEstoque`, `PosicaoEstoque` |
+| ✅ `list_stock_adjustments` / `delete_stock_adjustment` | `/estoque/ajuste/ ListarAjusteEstoque`, `ExcluirAjusteEstoque` |
 | `create_purchase_request` | `/produtos/requisicaocompra/` |
 | `create_incoming_note` | `/produtos/notaentrada/` + `/produtos/notaentradafat/` |
 | `create_production_order` | `/produtos/op/` — roadmap v0.3 |

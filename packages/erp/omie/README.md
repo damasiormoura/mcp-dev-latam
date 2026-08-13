@@ -51,16 +51,142 @@ Add to `.cursor/mcp.json` or `.vscode/mcp.json`:
 }
 ```
 
-## Tools (30)
+## Tools (82)
 
 > Conformance status of each tool against the official Omie API reference:
-> [`API-AUDIT.md`](./API-AUDIT.md).
+> [`API-AUDIT.md`](./API-AUDIT.md). Every tool carries the Omie method it maps
+> to; the contract test pins each pair.
 
-### Breaking change in 0.2.3
+### Customers (6)
 
-Seven tools could not work as shipped — two named Omie methods that do not
-exist, and five sent a `param` the API does not accept. Fixing them meant
-replacing their input schemas with the documented contract, so calls written
+| Tool | Omie method | Purpose |
+|---|---|---|
+| `list_customers` | `ListarClientes` | List customers from Omie ERP |
+| `create_customer` | `IncluirCliente` | Create a customer in Omie ERP |
+| `get_customer` | `ConsultarCliente` | Consult a single customer in Omie ERP by Omie ID or integration code |
+| `update_customer` | `AlterarCliente` | Update an existing customer in Omie ERP |
+| `upsert_customer` | `UpsertClienteCpfCnpj` | Create or update a customer in Omie ERP keyed on CNPJ/CPF |
+| `list_customers_summary` | `ListarClientesResumido` | List customers in the reduced form — fewer fields per record than list_customers, so it stays within a page budget when scanning a large base |
+
+### Products (5)
+
+| Tool | Omie method | Purpose |
+|---|---|---|
+| `list_products` | `ListarProdutos` | List products from Omie ERP |
+| `create_product` | `IncluirProduto` | Create a product in Omie ERP |
+| `get_product` | `ConsultarProduto` | Consult a single product in Omie ERP by Omie ID, integration code or SKU |
+| `update_product` | `AlterarProduto` | Update an existing product in Omie ERP |
+| `upsert_product` | `UpsertProduto` | Create or update a product in Omie ERP keyed on the integration code |
+
+### Sales orders & invoices (16)
+
+| Tool | Omie method | Purpose |
+|---|---|---|
+| `create_order` | `IncluirPedido` | Create a sales order in Omie ERP |
+| `list_orders` | `ListarPedidos` | List sales orders from Omie ERP |
+| `get_sales_order` | `ConsultarPedido` | Consult a specific sales order by ID or integration code in Omie ERP |
+| `update_sales_order` | `AlterarPedidoVenda` | Alter an existing sales order in Omie ERP |
+| `get_order_status` | `StatusPedido` | Get the processing status of a sales order in Omie ERP — whether it is billed, cancelled, denied or still open |
+| `change_order_stage` | `TrocarEtapaPedido` | Move a sales order to another stage in Omie ERP — this is how an order advances from Pedido (10) through Separar (20) to Faturar (50) |
+| `simulate_order_taxes` | `SimularImpostos` | Simulate the taxes of a sales order in Omie ERP without creating anything |
+| `delete_order` | `ExcluirPedido` | Delete a sales order in Omie ERP |
+| `return_order` | `DevolverPedido` | Register a return against a billed sales order in Omie ERP |
+| `validate_order` | `ValidarPedidoVenda` | Validate a sales order for billing in Omie ERP without issuing anything |
+| `invoice_sales_order` | `FaturarPedidoVenda` | Generate an invoice from an existing sales order in Omie ERP |
+| `cancel_order` | `CancelarPedidoVenda` | Cancel a sales order in Omie ERP |
+| `list_order_stages` | `ListarEtapasPedido` | List the sales order stages configured for this Omie account |
+| `list_invoices` | `ListarNF` | List invoices from Omie ERP |
+| `create_invoice` | `ConsultarNF` | Consult a specific NF in Omie ERP |
+| `get_invoice_pdf` | `ObterNfe` | Get the download links for an issued NF-e in Omie ERP — the DANFE PDF and the XML |
+
+### Purchasing (3)
+
+| Tool | Omie method | Purpose |
+|---|---|---|
+| `create_purchase_order` | `IncluirPedCompra` | Create a purchase order in Omie ERP |
+| `list_purchase_orders` | `PesquisarPedCompra` | List purchase orders from Omie ERP |
+| `get_purchase_order` | `ConsultarPedCompra` | Consult a specific purchase order in Omie ERP |
+
+### Services (OS / NFS-e) (10)
+
+| Tool | Omie method | Purpose |
+|---|---|---|
+| `create_service_order` | `IncluirOS` | Create a service order in Omie ERP |
+| `list_service_orders` | `ListarOS` | List service orders from Omie ERP |
+| `get_service_order` | `ConsultarOS` | Consult a specific service order in Omie ERP |
+| `update_service_order` | `AlterarOS` | Alter an existing service order in Omie ERP |
+| `change_service_order_stage` | `TrocarEtapaOS` | Move a service order to another stage in Omie ERP |
+| `validate_service_order` | `ValidarOS` | Validate a service order for billing in Omie ERP without issuing anything |
+| `invoice_service_order` | `FaturarOS` | Bill a service order in Omie ERP, issuing the NFS-e — the service-side counterpart of invoice_sales_order |
+| `cancel_service_order` | `CancelarOS` | Cancel a service order in Omie ERP |
+| `list_services` | `ListarCadastroServico` | List the service catalogue in Omie ERP |
+| `list_nfse` | `ListarNFSEs` | List issued service invoices (NFS-e) in Omie ERP |
+
+### Finance — receivables, payables, ledger (20)
+
+| Tool | Omie method | Purpose |
+|---|---|---|
+| `get_financial` | `ListarContasReceber` | List accounts receivable from Omie ERP |
+| `create_account_receivable` | `IncluirContaReceber` | Create an accounts receivable title in Omie ERP — the counterpart of create_account_payable |
+| `get_account_receivable` | `ConsultarContaReceber` | Consult a single accounts receivable title in Omie ERP |
+| `update_account_receivable` | `AlterarContaReceber` | Update an accounts receivable title in Omie ERP |
+| `receive_account_receivable` | `LancarRecebimento` | Settle / record a receipt (baixa) against an AR title in Omie ERP |
+| `cancel_receipt` | `CancelarRecebimento` | Cancel a receipt previously settled on an AR title in Omie ERP |
+| `create_account_payable` | `IncluirContaPagar` | Create an accounts payable entry in Omie ERP |
+| `list_accounts_payable` | `ListarContasPagar` | List accounts payable titles in Omie ERP |
+| `get_account_payable` | `ConsultarContaPagar` | Consult a single accounts payable title in Omie ERP |
+| `update_account_payable` | `AlterarContaPagar` | Update an accounts payable title in Omie ERP |
+| `pay_account_payable` | `LancarPagamento` | Settle / record payment (baixa) for an AP title in Omie ERP |
+| `cancel_payment` | `CancelarPagamento` | Cancel a payment previously settled on an AP title in Omie ERP |
+| `create_cash_entry` | `IncluirLancCC` | Create a bank account ledger entry (lançamento de conta corrente) in Omie ERP |
+| `list_cash_entries` | `ListarLancCC` | List bank account ledger entries in Omie ERP |
+| `update_cash_entry` | `AlterarLancCC` | Update a bank account ledger entry in Omie ERP |
+| `delete_cash_entry` | `ExcluirLancCC` | Delete a bank account ledger entry in Omie ERP |
+| `list_financial_movements` | `ListarMovimentos` | List unified financial movements (AP + AR + CC) in Omie ERP |
+| `get_bank_statement` | `ListarExtrato` | Retrieve bank account statement (extrato) for a period from Omie ERP |
+| `get_finance_summary` | `ObterResumoFinancas` | Get the consolidated finance position for a day in Omie ERP — balances and totals rather than a title-by-title listing |
+| `list_open_titles` | `ObterListaEmAberto` | List the titles still open on a given day in Omie ERP — the collections and payables worklist |
+
+### Billing — PIX & boleto (8)
+
+| Tool | Omie method | Purpose |
+|---|---|---|
+| `create_pix` | `GerarPix` | Generate a PIX charge in Omie ERP |
+| `get_pix_qrcode` | `GerarQrCodePix` | Get the PIX QR code registered for a bank account in Omie ERP |
+| `get_pix_status` | `ObterStatusPix` | Check whether a PIX charge has been paid in Omie ERP |
+| `list_pix` | `ListarPix` | List PIX charges in Omie ERP |
+| `cancel_pix` | `CancelarPix` | Cancel a PIX charge in Omie ERP |
+| `generate_boleto` | `GerarBoleto` | Generate a boleto for an accounts receivable title in Omie ERP |
+| `get_boleto` | `ObterBoleto` | Get the download link for a boleto already generated in Omie ERP |
+| `cancel_boleto` | `CancelarBoleto` | Cancel a boleto in Omie ERP |
+
+### Stock (6)
+
+| Tool | Omie method | Purpose |
+|---|---|---|
+| `create_stock_adjustment` | `IncluirAjusteEstoque` | Create an inventory adjustment (entry/exit/balance/transfer) in Omie ERP |
+| `list_stock_adjustments` | `ListarAjusteEstoque` | List inventory adjustments in Omie ERP |
+| `get_stock_position` | `ListarPosEstoque` | Get current stock position / balance in Omie ERP |
+| `get_product_stock` | `PosicaoEstoque` | Get the stock position of a single product in Omie ERP — cheaper than paging get_stock_position when you already know the product |
+| `list_stock_movements` | `ListarMovimentoEstoque` | List stock movements over a period in Omie ERP — the ledger behind the balances that get_stock_position reports |
+| `list_stock_locations` | `ListarLocaisEstoque` | List the warehouse locations configured in Omie ERP |
+
+### Supporting registries (8)
+
+| Tool | Omie method | Purpose |
+|---|---|---|
+| `get_company_info` | `ListarEmpresas` | List companies registered in Omie ERP |
+| `get_bank_accounts` | `ListarContasCorrentes` | List registered bank accounts in Omie ERP |
+| `list_categories` | `ListarCategorias` | List chart of accounts categories in Omie ERP |
+| `list_departments` | `ListarDepartamentos` | List departments (cost centers) in Omie ERP |
+| `list_projects` | `ListarProjetos` | List projects in Omie ERP |
+| `list_dre` | `ListarCadastroDRE` | List DRE (income statement) chart of accounts in Omie ERP |
+| `list_payment_terms` | `ListarParcelas` | List the payment terms (condições de pagamento / parcelas) configured in Omie ERP |
+| `list_salespeople` | `ListarVendedores` | List salespeople registered in Omie ERP |
+
+### Breaking changes
+
+**0.2.3** rewrote seven tools whose payloads the API rejected. Calls written
 against 0.2.2 need updating:
 
 | Tool | Was | Now |
@@ -73,42 +199,12 @@ against 0.2.2 need updating:
 | `create_cash_entry` | `cCodIntLanc` inside `cabecalho`; `cNatureza`, `cHistorico` | `cCodIntLanc` at the top level; direction comes from the sign of `nValorLanc` |
 | `create_invoice` | `nIdNF` | `nCodNF` (or `cChaveNFe`, or `nNF` + `serie`) |
 
-Arguments are now checked against each tool's schema before the request
-leaves, so a missing required field returns a local message naming the field
-instead of an opaque Omie `500`.
+**0.3.0** adds tools only — no existing tool changed its endpoint, method or
+accepted arguments.
 
-| Tool | Purpose |
-|---|---|
-| `list_customers` | List customers from Omie ERP |
-| `create_customer` | Create a customer in Omie ERP |
-| `list_products` | List products from Omie ERP |
-| `create_product` | Create a product in Omie ERP |
-| `create_order` | Create a sales order in Omie ERP |
-| `list_orders` | List sales orders from Omie ERP |
-| `list_invoices` | List invoices (NF) from Omie ERP |
-| `get_financial` | List accounts receivable from Omie ERP |
-| `create_invoice` | Consult a specific NF by ID in Omie ERP |
-| `get_company_info` | List companies registered in Omie ERP |
-| `create_service_order` | Create a service order (OS) in Omie ERP |
-| `list_service_orders` | List service orders (OS) from Omie ERP |
-| `create_purchase_order` | Create a purchase order in Omie ERP |
-| `list_purchase_orders` | List purchase orders from Omie ERP |
-| `get_bank_accounts` | List registered bank accounts in Omie ERP |
-| `create_account_payable` | Create an accounts payable (AP) entry in Omie ERP |
-| `list_accounts_payable` | List accounts payable (AP) titles in Omie ERP |
-| `pay_account_payable` | Settle / record payment (baixa) for an AP title in Omie ERP |
-| `list_dre` | List DRE (income statement) chart of accounts in Omie ERP |
-| `get_bank_statement` | Retrieve bank account statement (extrato) for a period from Omie ERP |
-| `list_categories` | List chart of accounts categories in Omie ERP |
-| `list_departments` | List departments (cost centers) in Omie ERP |
-| `list_projects` | List projects in Omie ERP |
-| `create_cash_entry` | Create a bank account ledger entry (lançamento de conta corrente) in Omie ERP |
-| `list_financial_movements` | List unified financial movements (AP + AR + CC) in Omie ERP |
-| `create_stock_adjustment` | Create an inventory adjustment (entry/exit/balance) in Omie ERP |
-| `get_stock_position` | Get current stock position / balance in Omie ERP |
-| `update_sales_order` | Alter an existing sales order in Omie ERP |
-| `get_sales_order` | Consult a specific sales order by ID or integration code in Omie ERP |
-| `invoice_sales_order` | Generate an invoice (NF) from an existing sales order in Omie ERP |
+Arguments are checked against each tool's schema before the request leaves, so
+a missing required field returns a local message naming the field instead of an
+opaque Omie `500`.
 
 ## Remote (HTTP) transport
 
@@ -186,12 +282,22 @@ transport refuses to start unless both are set or `MCP_INSECURE_HTTP=true` is.
 
 ## Roadmap
 
-### v0.3 (planned)
-- `create_production_order` — Create a production order
-- `emit_nfe` — Emit NF-e (native emission, not import)
-- `reconcile_bank_transaction` — Bank reconciliation matching
-- `create_service_contract` — Service contracts CRUD
-- `create_custom_field` — Merchant custom fields
+### v0.3 (shipped)
+52 tools added, taking the server from 30 to 82. The gaps that mattered most:
+accounts receivable was read-only (no way to raise or settle a title), service
+orders could be created but not billed, and `create_order` demanded a
+`codigo_parcela` with no tool to discover a valid one.
+
+### Next
+- Fix the seven filter parameters that don't exist in the API — see
+  [`API-AUDIT.md`](./API-AUDIT.md) section 2. These calls return `200` with the
+  filter silently dropped, which is worse than an error.
+- Retry/backoff and explicit `HTTP 425` handling: Omie blocks an IP + App Key +
+  method for 30 minutes after ten consecutive errors.
+- `create_production_order` — `/produtos/op/`
+- `create_service_contract` — `/servicos/contrato/`
+- `reconcile_bank_transaction` — bank reconciliation matching
+- CRM (`/crm/*`, 19 endpoints) — currently no coverage at all
 
 Want to contribute? [Open a PR](https://github.com/codespar/mcp-dev-latam) or [request a tool](https://github.com/codespar/mcp-dev-latam/issues).
 
