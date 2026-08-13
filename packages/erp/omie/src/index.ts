@@ -19,12 +19,14 @@
  * Environment:
  *   OMIE_APP_KEY — Omie app key
  *   OMIE_APP_SECRET — Omie app secret
+ *   OMIE_REQUEST_TIMEOUT_MS — per-request timeout to Omie (default 20000)
  *
  * HTTP transport (MCP_HTTP=true / --http):
  *   MCP_PORT — listen port (default 3000)
  *   MCP_AUTH_ISSUER — OIDC issuer; enables OAuth enforcement with the next var
  *   MCP_AUTH_RESOURCE — this server's canonical URL, required in the token `aud`
  *   MCP_INSECURE_HTTP — set to "true" to allow starting HTTP with no auth
+ *   MCP_SESSION_IDLE_TIMEOUT_MS — idle session eviction (default 1800000 / 30 min)
  */
 
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
@@ -36,13 +38,17 @@ import {
   ListToolsRequestSchema,
 } from "@modelcontextprotocol/sdk/types.js";
 
-import { omieRequest, validateArgs } from "./omie.js";
+import { omieRequest, validateArgs, CREDENTIALS_CONFIGURED } from "./omie.js";
 import { TOOLS, findTool } from "./tools/index.js";
 
-const VERSION = "0.4.0";
+const VERSION = "0.5.0";
 
 const DEMO_MODE = process.argv.includes("--demo") || process.env.MCP_DEMO === "true";
 
+// Curated, realistic responses for the tools most commonly exercised first —
+// shaped from the actual Omie response fields, not invented. The remaining
+// tools fall back to echoing the validated arguments (see DEMO_FALLBACK
+// below) rather than a shape this server hasn't verified against the API.
 const DEMO_RESPONSES: Record<string, unknown> = {
   create_order: { nCodPed: 12345, cCodIntPed: "PED-DEMO-001", cNumPedido: "001234", dDtPrevisao: "2026-04-15", nValorTotal: 150.00, cStatusPedido: "Faturado", items: [{ cDescricao: "Produto Demo", nQuantidade: 1, nValorUnitario: 150.00 }] },
   list_customers: { clientes_cadastro: [{ codigo_cliente: 1001, razao_social: "Demo Comércio LTDA", cnpj_cpf: "12345678000190", email: "contato@demo.com" }], pagina: 1, total_de_paginas: 1, registros: 1, total_de_registros: 1 },
@@ -54,6 +60,30 @@ const DEMO_RESPONSES: Record<string, unknown> = {
   list_payment_terms: { parcela_cadastro: [{ nCodigo: "999", cDescricao: "A vista", nParcelas: 1 }], pagina: 1, total_de_paginas: 1 },
   list_stock_locations: { locais: [{ codigo: 5001, descricao: "Almoxarifado Central" }], nPagina: 1, nTotPaginas: 1 },
 };
+
+/**
+ * Fallback for the tools without a curated response above.
+ *
+ * The previous fallback was `{ demo: true, tool: name }` — a placeholder that
+ * never varies and never fails, which is exactly what let demo mode look like
+ * "everything works" regardless of whether a tool's schema or dispatch was
+ * actually correct. Echoing the validated, post-defaulting arguments back is
+ * strictly more honest: it doesn't claim to be Omie's response shape (this
+ * server hasn't verified all 82), but it does let someone testing a tool call
+ * confirm their param assembly reached the point of being sent — which is the
+ * part demo mode can actually promise without guessing at an unverified API
+ * contract.
+ */
+function demoFallback(name: string, sentParam: unknown) {
+  return {
+    demo: true,
+    tool: name,
+    note: "No curated example response for this tool yet. This echoes the arguments that " +
+      "would have been sent to Omie (after defaults were applied) so you can verify the " +
+      "request shape; it is not a real Omie response.",
+    would_send: sentParam,
+  };
+}
 
 // ---------------------------------------------------------------------------
 // OAuth 2.0 protected-resource support (HTTP transport only).
@@ -91,46 +121,68 @@ function metadataUrl(): string {
 // this fork: this deployment only ever talks to app.omie.com.br with locally
 // held credentials, and we don't want the agent nudged toward a third-party
 // hosted alternative.
-const server = new Server(
-  { name: "mcp-omie", version: VERSION },
-  { capabilities: { tools: {} } }
-);
+//
+// A factory rather than one shared instance: the HTTP transport needs one
+// Server per session (the SDK ties a Server to a single transport), and
+// building each from scratch through this function — instead of copying
+// _requestHandlers off a template instance, which is what this used to do —
+// means every session's handlers are registered the same explicit way the
+// stdio server's are, with no dependency on the SDK's internal field layout.
+function buildServer(): Server {
+  const s = new Server({ name: "mcp-omie", version: VERSION }, { capabilities: { tools: {} } });
 
-server.setRequestHandler(ListToolsRequestSchema, async () => ({
-  tools: TOOLS.map(({ name, description, inputSchema }) => ({ name, description, inputSchema })),
-}));
+  s.setRequestHandler(ListToolsRequestSchema, async () => ({
+    tools: TOOLS.map(({ name, description, inputSchema }) => ({ name, description, inputSchema })),
+  }));
 
-server.setRequestHandler(CallToolRequestSchema, async (request) => {
-  const { name, arguments: rawArgs } = request.params;
-  const args = (rawArgs as Record<string, unknown> | undefined) ?? {};
+  s.setRequestHandler(CallToolRequestSchema, async (request) => {
+    const { name, arguments: rawArgs } = request.params;
+    const args = (rawArgs as Record<string, unknown> | undefined) ?? {};
 
-  const tool = findTool(name);
-  if (!tool) {
-    return { content: [{ type: "text", text: `Unknown tool: ${name}` }], isError: true };
-  }
+    const tool = findTool(name);
+    if (!tool) {
+      return { content: [{ type: "text", text: `Unknown tool: ${name}` }], isError: true };
+    }
 
-  const problems = validateArgs(tool.inputSchema, args);
-  if (problems.length > 0) {
-    return {
-      content: [{ type: "text", text: `Invalid arguments for ${name}:\n- ${problems.join("\n- ")}` }],
-      isError: true,
-    };
-  }
+    const problems = validateArgs(tool.inputSchema, args);
+    if (problems.length > 0) {
+      return {
+        content: [{ type: "text", text: `Invalid arguments for ${name}:\n- ${problems.join("\n- ")}` }],
+        isError: true,
+      };
+    }
 
-  if (DEMO_MODE) {
-    return { content: [{ type: "text", text: JSON.stringify(DEMO_RESPONSES[name] || { demo: true, tool: name }, null, 2) }] };
-  }
-
-  try {
     const param = tool.param ? tool.param(args) : args;
-    const result = await omieRequest(tool.path, tool.call, [param]);
-    return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
-  } catch (err) {
-    return { content: [{ type: "text", text: `Error: ${err instanceof Error ? err.message : String(err)}` }], isError: true };
-  }
-});
+
+    if (DEMO_MODE) {
+      return { content: [{ type: "text", text: JSON.stringify(DEMO_RESPONSES[name] ?? demoFallback(name, param), null, 2) }] };
+    }
+
+    try {
+      const result = await omieRequest(tool.path, tool.call, [param]);
+      return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
+    } catch (err) {
+      return { content: [{ type: "text", text: `Error: ${err instanceof Error ? err.message : String(err)}` }], isError: true };
+    }
+  });
+
+  return s;
+}
+
+const server = buildServer();
 
 async function main() {
+  // Non-fatal: `tools/list` and demo mode both work without credentials, so
+  // this warns rather than exits. The moment a real (non-demo) tool call is
+  // made, omieRequest fails fast with the same message — this just puts it in
+  // front of the operator immediately instead of only on first use.
+  if (!DEMO_MODE && !CREDENTIALS_CONFIGURED) {
+    console.error(
+      "Warning: OMIE_APP_KEY and/or OMIE_APP_SECRET are not set. Tool calls will fail until " +
+        "both are configured. Set --demo or MCP_DEMO=true to run without live credentials."
+    );
+  }
+
   if (process.argv.includes("--http") || process.env.MCP_HTTP === "true") {
     const { default: express } = await import("express");
     const { randomUUID } = await import("node:crypto");
@@ -200,11 +252,38 @@ async function main() {
 
     const app = express();
     app.use(express.json());
-    const transports = new Map<string, StreamableHTTPServerTransport>();
+
+    // Sessions live in this process's memory, keyed by Mcp-Session-Id, and
+    // carry their own Server + transport pair (built via buildServer(), not by
+    // copying handlers off another instance — see that function's comment).
+    // lastSeenAt tracks activity so the sweep below can close and drop a
+    // session nothing ever sent a DELETE for, instead of holding it (and its
+    // transport, and the timers/streams under it) until the process restarts.
+    type Session = { transport: StreamableHTTPServerTransport; lastSeenAt: number };
+    const sessions = new Map<string, Session>();
+
+    const SESSION_IDLE_TIMEOUT_MS = Number(process.env.MCP_SESSION_IDLE_TIMEOUT_MS) || 30 * 60 * 1000;
+    const sweep = setInterval(() => {
+      const now = Date.now();
+      for (const [sid, session] of sessions) {
+        if (now - session.lastSeenAt > SESSION_IDLE_TIMEOUT_MS) {
+          session.transport.close?.();
+          sessions.delete(sid);
+        }
+      }
+    }, 5 * 60 * 1000);
+    sweep.unref(); // a timer alone shouldn't keep the process alive
+
+    function touch(sid: string | undefined) {
+      if (sid) {
+        const session = sessions.get(sid);
+        if (session) session.lastSeenAt = Date.now();
+      }
+    }
 
     // Unauthenticated on purpose: the container healthcheck calls it, and it
     // discloses nothing but liveness and a session count.
-    app.get("/health", (_req: any, res: any) => res.json({ status: "ok", sessions: transports.size }));
+    app.get("/health", (_req: any, res: any) => res.json({ status: "ok", sessions: sessions.size }));
 
     if (AUTH_ENABLED) {
       // RFC 9728 protected resource metadata. Served at both the bare path and
@@ -237,18 +316,32 @@ async function main() {
     app.post("/mcp", async (req: any, res: any) => {
       if (!(await requireAuth(req, res))) return;
       const sid = req.headers["mcp-session-id"] as string | undefined;
-      if (sid && transports.has(sid)) { await transports.get(sid)!.handleRequest(req, res, req.body); return; }
+      const existing = sid ? sessions.get(sid) : undefined;
+      if (existing) { touch(sid); await existing.transport.handleRequest(req, res, req.body); return; }
       if (sid) { unknownSession(res); return; }
       if (!sid && isInitializeRequest(req.body)) {
-        const t = new StreamableHTTPServerTransport({ sessionIdGenerator: () => randomUUID(), onsessioninitialized: (id) => { transports.set(id, t); } });
-        t.onclose = () => { if (t.sessionId) transports.delete(t.sessionId); };
-        const s = new Server({ name: "mcp-omie", version: VERSION }, { capabilities: { tools: {} } }); (server as any)._requestHandlers.forEach((v: any, k: any) => (s as any)._requestHandlers.set(k, v)); (server as any)._notificationHandlers?.forEach((v: any, k: any) => (s as any)._notificationHandlers.set(k, v)); await s.connect(t);
+        const t = new StreamableHTTPServerTransport({
+          sessionIdGenerator: () => randomUUID(),
+          onsessioninitialized: (id) => { sessions.set(id, { transport: t, lastSeenAt: Date.now() }); },
+        });
+        t.onclose = () => { if (t.sessionId) sessions.delete(t.sessionId); };
+        await buildServer().connect(t);
         await t.handleRequest(req, res, req.body); return;
       }
       res.status(400).json({ jsonrpc: "2.0", error: { code: -32000, message: "Bad Request" }, id: null });
     });
-    app.get("/mcp", async (req: any, res: any) => { if (!(await requireAuth(req, res))) return; const sid = req.headers["mcp-session-id"] as string; if (sid && transports.has(sid)) await transports.get(sid)!.handleRequest(req, res); else unknownSession(res); });
-    app.delete("/mcp", async (req: any, res: any) => { if (!(await requireAuth(req, res))) return; const sid = req.headers["mcp-session-id"] as string; if (sid && transports.has(sid)) await transports.get(sid)!.handleRequest(req, res); else unknownSession(res); });
+    app.get("/mcp", async (req: any, res: any) => {
+      if (!(await requireAuth(req, res))) return;
+      const sid = req.headers["mcp-session-id"] as string;
+      const session = sessions.get(sid);
+      if (session) { touch(sid); await session.transport.handleRequest(req, res); } else unknownSession(res);
+    });
+    app.delete("/mcp", async (req: any, res: any) => {
+      if (!(await requireAuth(req, res))) return;
+      const sid = req.headers["mcp-session-id"] as string;
+      const session = sessions.get(sid);
+      if (session) { await session.transport.handleRequest(req, res); } else unknownSession(res);
+    });
     const port = Number(process.env.MCP_PORT) || 3000;
     app.listen(port, () => {
       console.error(`MCP HTTP server on http://localhost:${port}/mcp`);

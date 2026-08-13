@@ -16,9 +16,20 @@ _Data: 2026-08-12 — versão auditada: `mcp-omie` 0.2.2 (30 tools, `src/index.t
 >   tipar `codigo_baixa` como o inteiro da Omie (com `codigo_baixa_integracao`
 >   para o código do integrador) e o teste de contrato agora trava, tool a
 >   tool, os nomes proibidos e os obrigatórios.
-> - **Aberto:** seção 4 (backoff/425, `faultstring` estruturado, demo mode
->   cobrindo 9 de 82) e o que restou da seção 5 — CRM, contador, ordem de
->   produção, contratos de serviço, tabelas de preço.
+> - **0.5.0** — a **seção 4 foi fechada** (com uma exceção): retry com
+>   backoff exponencial restrito a métodos de leitura (`Listar*`,
+>   `Consultar*`, `Obter*`, `Pesquisar*`, `Status*`, `Simular*`, `Validar*`),
+>   HTTP 425 nunca repetido, HTTP 500 nunca repetido (a Omie usa o mesmo
+>   código para erro de negócio permanente e instabilidade transitória — ver
+>   4.2), `faultstring`/`faultcode` estruturados em `OmieApiError`, validação
+>   estendida com tipo escalar/`enum`/`maximum`/`minimum`, credenciais
+>   ausentes falham no primeiro uso com aviso adicional no startup, demo mode
+>   com fallback que ecoa os argumentos validados em vez de fingir sucesso, e
+>   `buildServer()` substituindo o acesso a campos privados do SDK + expiração
+>   de sessão HTTP ociosa. **4.5 fica parcialmente aberto**: regras
+>   "um dos dois campos" continuam só na descrição, não no schema.
+> - **Aberto:** o que restou da seção 5 — CRM, contador, ordem de produção,
+>   contratos de serviço, tabelas de preço.
 
 Fonte da verdade: as páginas de referência publicadas pela Omie em
 `https://app.omie.com.br/api/v1/<recurso>/` (lista em
@@ -341,92 +352,117 @@ novo e manter o antigo como alias por uma versão.
 
 ---
 
-## 4. Problemas transversais
+## 4. Problemas transversais — fechada em 0.5.0 (com uma exceção em 4.5)
 
-### 4.1 Paginação sem limite superior
+O diagnóstico abaixo descreve o estado até 0.4.0. `src/index.ts` foi dividido
+em `src/index.ts` (servidor/transporte) e `src/omie.ts` (transporte HTTP para
+a Omie + validação), e ganhou `src/__tests__/omie.test.ts` dedicado a essa
+camada.
 
-O limite da Omie é **100 registros por página** em todos os métodos de
-listagem. Nenhum schema declara `maximum`, então o agente pede 500 e recebe
-erro. Adicionar `maximum: 100` nos `registros_por_pagina` / `nRegPorPagina` /
-`nRegsPorPagina`.
+### 4.1 Paginação sem limite superior — resolvido em 0.3.0
 
-### 4.2 Limites de consumo não tratados — risco de bloqueio de 30 min
+`pagingSchema()` (`src/tools/types.ts`) declara `maximum: 100` em todo campo
+de tamanho de página, nas três grafias (`registros_por_pagina`,
+`nRegPorPagina`, `nRegsPorPagina`). A partir de 0.5.0 isso também é
+**imposto**, não só documentado: `validateArgs` rejeita `> 100` antes do
+envio (ver 4.5).
 
-Limites publicados: 960 req/min por IP, 240 req/min por IP + App Key + método,
-4 requisições simultâneas por IP + App Key + método, e **bloqueio de 30
-minutos (HTTP 425) após 10 erros consecutivos** na mesma combinação. Há também
-bloqueio de requisição redundante: consultar o mesmo ID duas vezes em menos de
-60 segundos devolve dado só na primeira.
+### 4.2 Limites de consumo — resolvido em 0.5.0
 
-`omieRequest` (`src/index.ts:107-125`) não tem retry, backoff, limite de
-concorrência nem timeout. O cenário concreto: um agente entra em loop com um
-payload malformado — o que, dados os defeitos da seção 1, é o comportamento
-esperado hoje — e em dez tentativas derruba a integração inteira por meia
-hora. Mínimo recomendável: `AbortSignal.timeout`, backoff exponencial, e
-tratamento explícito de 425 **sem retry**, com mensagem dizendo ao agente para
-parar.
+`omieRequest` (`src/omie.ts`) agora tem timeout (`AbortSignal.timeout`,
+`OMIE_REQUEST_TIMEOUT_MS`, default 20s) e retry com backoff exponencial +
+jitter — mas restrito de um jeito que o "mínimo recomendável" original não
+detalhava e que se mostrou necessário:
 
-### 4.3 Erros de negócio chegam como texto cru
+- **Só métodos de leitura são repetidos** (`Listar*`, `Consultar*`,
+  `Obter*`, `Pesquisar*`, `Status*`, `Simular*`, `Validar*`, mais o caso único
+  `PosicaoEstoque`). Um timeout numa escrita é ambíguo — a Omie pode ter
+  processado a chamada mesmo sem a resposta voltar — e repetir
+  `create_order`/`pay_account_payable`/`create_pix` nessa ambiguidade arrisca
+  duplicar pedido, pagamento ou cobrança. Prefixo desconhecido é tratado como
+  escrita por padrão (fail-safe).
+- **HTTP 500 nunca é repetido**, nem para leitura. A Omie usa o mesmo código
+  para erro de negócio permanente ("cliente não encontrado") e instabilidade
+  transitória — repetir todo 500 repetiria o caso irrecuperável e gastaria o
+  mesmo orçamento de 10 erros que leva ao bloqueio de 425. Só falha de rede e
+  502/503/504 são repetidos, até 2 vezes.
+- **HTTP 425 nunca é repetido**, leitura ou escrita — repetir dentro de um
+  bloqueio ativo não pode ter sucesso.
 
-A Omie devolve erro de negócio com HTTP 500 e corpo JSON contendo
-`faultstring`/`faultcode`. O código faz `res.text()` e concatena numa
-`Error` (`src/index.ts:120-123`), então o agente recebe
-`Omie API 500: {"faultstring":"ERROR: ...","faultcode":"SOAP-ENV:Client-101"}`.
-Parsear e devolver `{ faultcode, faultstring }` estruturado permite que o
-agente distinga "cliente não encontrado" de "instabilidade" e decida se
-repete.
+Limite de concorrência (4 requisições simultâneas por IP+AppKey+método) **não
+foi implementado** — decisão deliberada de escopo, não descoberta durante a
+implementação: um limitador global seria conservador demais (o limite real é
+por combinação de método) e um por-método exigiria rastrear a chave certa por
+chamada. Fica como possível trabalho futuro.
 
-### 4.4 Credenciais ausentes falham tarde
+### 4.3 Erros de negócio — resolvido em 0.5.0
 
-`APP_KEY`/`APP_SECRET` default para `""` (`src/index.ts:73-74`) e a chamada
-segue para a Omie, que responde com erro genérico de autenticação. Falhar no
-startup (stdio) ou responder com erro claro na primeira tool torna o problema
-diagnosticável.
+`OmieApiError` (`src/omie.ts`) faz `JSON.parse` do corpo do erro e expõe
+`httpStatus`, `faultCode` e `faultString` como campos tipados. A mensagem
+renderizada separa as duas linhas (`faultcode: ...` / `faultstring: ...`) em
+vez de concatenar o JSON cru na mensagem, e o caso 425 tem uma mensagem própria
+dizendo explicitamente para não repetir agora.
 
-### 4.5 Validação de entrada — parcialmente resolvido em 0.2.3
+### 4.4 Credenciais ausentes — resolvido em 0.5.0
 
-Até 0.2.2 não havia validação alguma: `args` ia cru para `param[0]` em todas
-as tools de escrita e o agente só descobria o erro pelo 500 da Omie. 0.2.3
-adiciona um validador que percorre o próprio `inputSchema` da tool
-(obrigatórios, tipo objeto/array, `minItems`) antes do envio, então campo
-faltando vira mensagem local nomeando o campo.
+`omieRequest` falha imediatamente (sem tocar a rede) se `OMIE_APP_KEY` ou
+`OMIE_APP_SECRET` estiverem ausentes, com mensagem citando as duas variáveis.
+Adicionalmente, `main()` emite um aviso não-fatal no startup nesse mesmo caso
+— não-fatal porque `tools/list` e o modo demo continuam funcionando sem
+credenciais, então encerrar o processo seria mais agressivo do que o
+necessário.
 
-O que ainda falta: o validador não confere tipos escalares nem `enum`, e não
-expressa as regras "um dos dois" — `codigo_produto` **ou**
+### 4.5 Validação de entrada — estendida em 0.5.0, "um dos dois" ainda aberto
+
+`validateArgs` (`src/omie.ts`) agora confere tipo escalar (`string`,
+`number`, `boolean`), `enum` e `minimum`/`maximum` numérico, além do que já
+existia (obrigatórios, tipo objeto/array, `minItems`). Isso fecha o exemplo
+citado na versão anterior desta seção: `registros_por_pagina: 500` agora é
+rejeitado localmente em vez de chegar à Omie.
+
+**Ainda aberto:** as regras "um dos dois" (`codigo_produto` **ou**
 `codigo_produto_integracao`, `nCodFor` **ou** `cCodIntFor`, `id_prod` **ou**
-`cod_int` — que hoje vivem só na descrição.
+`cod_int`) continuam só na descrição da tool. Expressá-las exigiria uma
+construção tipo `oneOf`/`anyOf` que o validador atual — deliberadamente um
+subconjunto simples de JSON Schema — não tem. Fica como mudança maior e
+separada.
 
-### 4.6 Modo demo cobre 7 de 30 tools
+### 4.6 Modo demo — melhorado em 0.5.0, sem fabricar formato de resposta
 
-`DEMO_RESPONSES` (`src/index.ts:63-71`) tem resposta para 7 tools; as outras
-23 retornam `{demo:true, tool:name}`. Como o fallback nunca falha, o modo demo
-dá a impressão de que tudo funciona.
+`DEMO_RESPONSES` continua com exemplos curados (9 tools) verificados contra
+os campos reais da Omie. Para as demais, o fallback deixou de ser
+`{demo:true, tool:name}` — que nunca falhava e por isso dava a impressão de
+que tudo funcionava — e passou a ecoar os argumentos validados e já
+processados por `param()` (`{ demo: true, tool, note, would_send }`).
 
-### 4.7 A suíte de testes não testava o contrato — resolvido em 0.2.3
+Isso resolve a parte "nunca falha" do problema (a validação continua rodando
+antes, então um argumento inválido ainda falha em modo demo) sem inventar um
+formato de resposta da Omie que este servidor não verificou — construir
+exemplos realistas para as ~70 tools restantes exigiria extrair o tipo de
+resposta documentado de cada endpoint, o que não foi feito aqui por decisão
+de escopo (o mesmo padrão de "não inferir" seguido no resto desta auditoria).
 
-Até 0.2.2, `src/__tests__/index.test.ts` tinha 53 linhas: contava as tools e
-verificava `ListarClientes`. Um teste table-driven percorrendo as 30 e
-afirmando `(path, call)` teria pego 1.1 e 1.2 (métodos inexistentes) no
-primeiro run. A suíte agora tem:
+### 4.7 A suíte de testes — resolvido em 0.2.3, ampliado em 0.4.0/0.5.0
 
-1. tabela `tool → { path, call }` verificada para as 30, mais a asserção de
-   que a lista de tools registradas é exatamente a da tabela;
-2. verificação da forma do `param` das 7 tools reescritas, incluindo a
-   ausência das chaves antigas (`itens`, `codigo_produto`, `tipo_ajuste`…);
-3. casos de validação: pedido sem `etapa`/`codigo_parcela` e ajuste sem
-   `origem`/`motivo` falham **sem** chamar a Omie.
+Ver histórico nas versões anteriores desta seção. Em 0.5.0 a suíte ganhou
+`src/__tests__/omie.test.ts` (33 testes) cobrindo especificamente retry,
+backoff, classificação leitura/escrita, `OmieApiError` e a validação
+estendida — com fake timers, então roda em ~100ms sem esperas reais.
 
-Ainda falta cobrir os filtros da seção 2 e um teste de que
-`registros_por_pagina > 100` é rejeitado (depende de 4.1).
+### 4.8 Transporte HTTP — resolvido em 0.5.0
 
-### 4.8 Transporte HTTP: cópia de handlers privados e sessões sem TTL
+`buildServer()` em `src/index.ts` constrói cada `Server` (um por sessão HTTP)
+registrando os handlers pela API pública (`setRequestHandler`), eliminando o
+acesso a `_requestHandlers`/`_notificationHandlers` — campos privados do SDK
+que uma atualização podia quebrar silenciosamente. As sessões HTTP agora
+carregam `lastSeenAt` e uma varredura periódica (`MCP_SESSION_IDLE_TIMEOUT_MS`,
+default 30 min) fecha e remove sessões que sumiram sem `DELETE`, em vez de
+retê-las até o restart.
 
-Fora do escopo API-vs-doc, mas vale registrar: `src/index.ts:826` cria um
-`Server` novo por sessão e copia `_requestHandlers` / `_notificationHandlers`
-por acesso a campo privado do SDK — quebra silenciosamente numa atualização
-do `@modelcontextprotocol/sdk`. Expor uma `function buildServer()` que
-registra os handlers resolve. O `Map` de transports também não tem expiração:
-sessões que somem sem `DELETE` ficam retidas até o restart.
+Não coberto por teste automatizado: o caminho HTTP (sessões, TTL, OAuth) não
+tinha testes antes desta mudança e continua sem — testá-lo exigiria subir um
+servidor `express` real ou mockar a camada de transporte, o que não foi
+tentado aqui.
 
 ---
 

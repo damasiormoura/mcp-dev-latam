@@ -294,9 +294,36 @@ Omie provides a sandbox via app registration. Create an app to get test credenti
 | `MCP_AUTH_RESOURCE` | HTTP only | This server's canonical URL, exactly as entered in the client. Tokens must carry it in `aud` |
 | `MCP_INSECURE_HTTP` | No | `true` allows the HTTP transport to start with no auth. Only for a port nothing untrusted can reach |
 | `MCP_DEMO` | No | `true` (or `--demo`) returns canned responses without calling Omie |
+| `OMIE_REQUEST_TIMEOUT_MS` | No | Per-request timeout to Omie, in ms (default `20000`) |
+| `MCP_SESSION_IDLE_TIMEOUT_MS` | HTTP only | Idle HTTP session eviction, in ms (default `1800000` / 30 min) |
 
 `MCP_AUTH_ISSUER` and `MCP_AUTH_RESOURCE` are required together: the HTTP
 transport refuses to start unless both are set or `MCP_INSECURE_HTTP=true` is.
+
+## Resilience
+
+Omie blocks an IP + App Key + method combination for **30 minutes** (HTTP
+425) after 10 consecutive errors — an automated retry policy has to be
+careful not to cause the very block it's meant to survive. This server:
+
+- **Only retries read-only calls** (`Listar*`, `Consultar*`, `Obter*`,
+  `Pesquisar*`, `Status*`, `Simular*`, `Validar*`). A write's timeout is
+  ambiguous — Omie may have already processed it even though no response
+  came back — so retrying `create_order`, `pay_account_payable` and the like
+  risks a duplicate order or a duplicate payment. They fail on the first
+  error instead, every time.
+- **Never retries plain HTTP 500.** Omie funnels both transient instability
+  and permanent business errors ("cliente não encontrado", a malformed
+  field) through that one status code, so retrying it blindly would retry
+  the unretryable case too — and spend the same 10-error budget that leads
+  to the block. Only network failures, request timeouts, and 502/503/504
+  are retried, up to 2 times with exponential backoff and jitter.
+- **Never retries HTTP 425** under any circumstance, read or write.
+- Every Omie business error is parsed into `{ httpStatus, faultCode,
+  faultString }` (`OmieApiError`) instead of a raw JSON string, so the error
+  text an agent sees names the actual problem.
+- Every request carries a timeout (`OMIE_REQUEST_TIMEOUT_MS`, default 20s)
+  so a hung connection can't block a tool call indefinitely.
 
 ## Roadmap
 
@@ -306,12 +333,24 @@ accounts receivable was read-only (no way to raise or settle a title), service
 orders could be created but not billed, and `create_order` demanded a
 `codigo_parcela` with no tool to discover a valid one.
 
+### v0.4 (shipped)
+Closed the seven filter parameters that didn't exist in the API — those
+calls used to return `200` with the filter silently dropped, worse than an
+error. See [`API-AUDIT.md`](./API-AUDIT.md) section 2.
+
+### v0.5 (shipped)
+Retry/backoff, explicit `HTTP 425` handling, structured `faultstring` /
+`faultcode` errors, extended argument validation (scalar types, `enum`,
+numeric bounds), a demo-mode fallback that no longer pretends every tool
+works, and an HTTP session-handling cleanup (no more reaching into the MCP
+SDK's private fields, plus idle-session eviction). See the
+[Resilience](#resilience) section above and
+[`API-AUDIT.md`](./API-AUDIT.md) section 4.
+
 ### Next
-- Fix the seven filter parameters that don't exist in the API — see
-  [`API-AUDIT.md`](./API-AUDIT.md) section 2. These calls return `200` with the
-  filter silently dropped, which is worse than an error.
-- Retry/backoff and explicit `HTTP 425` handling: Omie blocks an IP + App Key +
-  method for 30 minutes after ten consecutive errors.
+- Cross-field validation ("`codigo_produto` or `codigo_produto_integracao`,
+  one of the two") — currently documented in each field's description only,
+  since it needs `oneOf`/`anyOf` wiring the current validator doesn't have.
 - `create_production_order` — `/produtos/op/`
 - `create_service_contract` — `/servicos/contrato/`
 - `reconcile_bank_transaction` — bank reconciliation matching
