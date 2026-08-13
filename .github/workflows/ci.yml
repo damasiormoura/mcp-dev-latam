@@ -1,5 +1,16 @@
 name: CI
 
+# Scoped to packages/erp/omie.
+#
+# This fork exists to run one server: deploy-omie.yml is the only deploy and
+# sync-upstream.yml only tracks packages/erp/omie upstream. The other ~110
+# workspaces are frozen upstream copies that nothing here builds, tests or
+# ships, so every job below looks at the Omie package alone.
+#
+# The trade-off is explicit: a change to any other package is no longer built,
+# tested, secret-scanned or catalog-checked by this workflow. Widening a job
+# back out is a one-line change (drop the --workspace / --only / path filter).
+
 on:
   push:
     branches: [main]
@@ -10,42 +21,70 @@ jobs:
   build-and-test:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with:
           node-version: 22
-      - run: npm install
-      - run: npm run build --workspaces --if-present
-      - run: npm test
+
+      # --include-workspace-root keeps the root devDependencies (vitest lives
+      # there, not in the package) while installing only this one workspace's
+      # dependency tree instead of all 111.
+      - run: npm install --workspace=@codespar/mcp-omie --include-workspace-root
+
+      - run: npm run build --workspace=@codespar/mcp-omie
+
+      # vitest is configured at the root, so it is invoked from the root with
+      # the package path as its filter rather than through `npm test`.
+      - run: npx vitest run packages/erp/omie
 
   catalog:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
 
-      # Catalog quality gate. audit-catalog.py walks every packages/*/*/server.json
-      # and fails (exit 1) on any HIGH finding: missing required fields, a name
-      # that isn't io.github.codespar/mcp-*, a version that disagrees with
-      # package.json, or a repository.url still on the legacy mcp-dev-brasil.
-      # This is what catches drift like a bumped package.json whose server.json
-      # was left stale, before it reaches the registry.
+      # Catalog quality gate. audit-catalog.py fails (exit 1) on any HIGH
+      # finding: missing required fields, a name that isn't
+      # io.github.codespar/mcp-*, a version that disagrees with package.json, or
+      # a repository.url still on the legacy mcp-dev-brasil. This is what
+      # catches drift like a bumped package.json whose server.json was left
+      # stale, before it reaches the registry.
+      #
+      # --only erp/omie narrows it to this fork's server. An unknown slug exits
+      # 2, so a typo here fails the job instead of auditing nothing.
       - name: Catalog audit (no HIGH findings)
-        run: npm run audit:catalog
+        run: npm run audit:catalog -- --only erp/omie
 
   security:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with:
           node-version: 22
-      - run: npm install
 
-      - name: npm audit
-        run: npm audit --omit=dev || true
+      # packages/erp/omie carries its own lockfile — the one the Docker image
+      # installs from — so auditing it measures the dependency tree that
+      # actually reaches the live server.
+      #
+      # Running npm there in place does NOT do that: npm walks up, finds the
+      # workspace config in the repo root, ignores the package's lockfile and
+      # resolves the whole 111-workspace tree instead. Copying the two files
+      # somewhere with no workspace root above them is exactly what the
+      # Dockerfile does (`COPY package.json package-lock.json`), and it is what
+      # makes this audit mean what it says.
+      #
+      # --package-lock-only audits the lockfile directly, so no install is
+      # needed. `|| true` is deliberate: this reports, it does not gate. Drop it
+      # to make a new advisory against the shipped tree fail the build.
+      - name: npm audit (omie's standalone lockfile)
+        run: |
+          audit_dir="$(mktemp -d)"
+          cp packages/erp/omie/package.json packages/erp/omie/package-lock.json "$audit_dir/"
+          cd "$audit_dir"
+          npm audit --package-lock-only --omit=dev || true
 
       - name: Scan for hardcoded secrets
         run: |
@@ -54,7 +93,7 @@ jobs:
           # Documentation placeholders like "sk_live_..." stop right after the
           # underscore and must not trip the scan. The AWS pattern (AKIA + 16
           # uppercase/digit chars) is already shape-specific enough on its own.
-          if grep -rnE "sk_live_[A-Za-z0-9]{20,}|AKIA[A-Z0-9]{16}" --include="*.ts" packages/ 2>/dev/null | grep -v node_modules | grep -v ".env"; then
+          if grep -rnE "sk_live_[A-Za-z0-9]{20,}|AKIA[A-Z0-9]{16}" --include="*.ts" packages/erp/omie/ 2>/dev/null | grep -v node_modules | grep -v ".env"; then
             echo "::error::Hardcoded secret found in source code"
             exit 1
           fi
