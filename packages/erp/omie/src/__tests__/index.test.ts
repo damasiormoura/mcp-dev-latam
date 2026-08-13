@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
 let listToolsHandler: Function;
 let callToolHandler: Function;
@@ -71,7 +71,7 @@ const MIN_ARGS: Record<string, unknown> = {
     codigo_lancamento_integracao: "AP-1", codigo_cliente_fornecedor: 5,
     data_vencimento: "01/01/2027", valor_documento: 100, codigo_categoria: "2.04.01",
   },
-  pay_account_payable: { codigo_baixa: "BX-1", valor: 100, data: "01/01/2027", codigo_conta_corrente: 3 },
+  pay_account_payable: { codigo_baixa_integracao: "BX-1", valor: 100, data: "01/01/2027", codigo_conta_corrente: 3 },
   cancel_payment: { codigo_baixa: 7 },
   create_account_receivable: {
     codigo_lancamento_integracao: "AR-1", codigo_cliente_fornecedor: 5,
@@ -313,6 +313,47 @@ describe("mcp-omie", () => {
       const { body } = await call("list_dre", {});
 
       expect(body.param[0]).toEqual({ apenasContasAtivas: "S" });
+    });
+  });
+
+  describe("demo mode", () => {
+    beforeEach(async () => {
+      process.env.MCP_DEMO = "true";
+      vi.resetModules();
+      listToolsHandler = undefined as any;
+      callToolHandler = undefined as any;
+      mockFetch.mockReset();
+      await import("../index.js");
+    });
+
+    afterEach(() => {
+      delete process.env.MCP_DEMO;
+    });
+
+    it("never touches the network, even for a curated response", async () => {
+      const result = await callToolHandler({ params: { name: "list_customers", arguments: {} } });
+
+      expect(mockFetch).not.toHaveBeenCalled();
+      expect(JSON.parse(result.content[0].text)).toHaveProperty("clientes_cadastro");
+    });
+
+    it("still runs schema validation before returning a response", async () => {
+      const result = await callToolHandler({
+        params: { name: "create_order", arguments: { cabecalho: {}, det: [], informacoes_adicionais: {} } },
+      });
+
+      expect(result.isError).toBe(true);
+      expect(result.content[0].text).toContain("is required");
+      expect(mockFetch).not.toHaveBeenCalled();
+    });
+
+    it("falls back to echoing the validated, defaulted arguments for a tool with no curated example", async () => {
+      const result = await callToolHandler({ params: { name: "list_salespeople", arguments: { pagina: 2 } } });
+      const body = JSON.parse(result.content[0].text);
+
+      expect(body.demo).toBe(true);
+      expect(body.tool).toBe("list_salespeople");
+      expect(body.would_send).toMatchObject({ pagina: 2, registros_por_pagina: 50 });
     });
   });
 
