@@ -54,15 +54,27 @@ export const financeTools: OmieTool[] = [
   // --- Accounts receivable ---------------------------------------------------
   {
     name: "get_financial",
-    description: "List accounts receivable from Omie ERP",
+    description:
+      "List accounts receivable from Omie ERP. Filters are the documented `filtrar_*` fields — note " +
+      "that `filtrar_por_data_*` filters on inclusion/change date, while `filtrar_por_emissao_*` filters " +
+      "on the issue date.",
     path: AR,
     call: "ListarContasReceber",
     inputSchema: {
       type: "object",
       properties: {
         ...pagingSchema("snake"),
-        dDtEmiInicial: date("Start emission date"),
-        dDtEmiFinal: date("End emission date"),
+        filtrar_por_emissao_de: date("Issue date from"),
+        filtrar_por_emissao_ate: date("Issue date to"),
+        filtrar_por_data_de: date("Inclusion / change date from"),
+        filtrar_por_data_ate: date("Inclusion / change date to"),
+        filtrar_por_status: { type: "string", description: "Title status (RECEBIDO, ATRASADO, AVENCER, VENCEHOJE, EMABERTO, CANCELADO, ...)" },
+        filtrar_apenas_titulos_em_aberto: flag("Only titles still open"),
+        filtrar_cliente: { type: "number", description: "Filter by customer ID" },
+        filtrar_por_cpf_cnpj: { type: "string", description: "Filter by customer CPF / CNPJ" },
+        filtrar_conta_corrente: { type: "number", description: "Filter by bank account ID" },
+        filtrar_por_projeto: { type: "number", description: "Filter by project ID" },
+        exibir_obs: flag("Include the entry notes"),
       },
     },
     param: withPaging("snake"),
@@ -147,16 +159,25 @@ export const financeTools: OmieTool[] = [
   },
   {
     name: "list_accounts_payable",
-    description: "List accounts payable (AP) titles in Omie ERP",
+    description:
+      "List accounts payable (AP) titles in Omie ERP. This endpoint has no due-date filter — to select " +
+      "titles by vencimento use list_financial_movements, which accepts dDtVencDe / dDtVencAte.",
     path: AP,
     call: "ListarContasPagar",
     inputSchema: {
       type: "object",
       properties: {
         ...pagingSchema("snake"),
-        dDtVencDe: date("Due date from"),
-        dDtVencAte: date("Due date to"),
-        status_titulo: { type: "string", description: "Title status (ABERTO, LIQUIDADO, etc.)" },
+        filtrar_por_status: { type: "string", description: "Title status: CANCELADO, PAGO, LIQUIDADO, EMABERTO, ATRASADO, VENCEHOJE, AVENCER, PAGTOPARCIAL" },
+        filtrar_por_emissao_de: date("Issue date from"),
+        filtrar_por_emissao_ate: date("Issue date to"),
+        filtrar_por_data_de: date("Inclusion / change date from"),
+        filtrar_por_data_ate: date("Inclusion / change date to"),
+        filtrar_cliente: { type: "number", description: "Filter by supplier ID" },
+        filtrar_por_cpf_cnpj: { type: "string", description: "Filter by supplier CPF / CNPJ" },
+        filtrar_conta_corrente: { type: "number", description: "Filter by bank account ID" },
+        filtrar_por_projeto: { type: "number", description: "Filter by project ID" },
+        exibir_obs: flag("Include the entry notes"),
       },
     },
     param: withPaging("snake"),
@@ -180,21 +201,17 @@ export const financeTools: OmieTool[] = [
   },
   {
     name: "pay_account_payable",
-    description: "Settle / record payment (baixa) for an AP title in Omie ERP",
+    description:
+      "Settle / record payment (baixa) for an AP title in Omie ERP (LancarPagamento). Identify the title " +
+      "with codigo_lancamento or codigo_lancamento_integracao — without one of them the settlement has " +
+      "no target. Supply your own reference in codigo_baixa_integracao; codigo_baixa is the integer Omie " +
+      "assigns.",
     path: AP,
     call: "LancarPagamento",
     inputSchema: {
       type: "object",
-      properties: {
-        codigo_lancamento: { type: "number", description: "Omie AP title ID" },
-        codigo_lancamento_integracao: { type: "string", description: "Integration code (alternative to codigo_lancamento)" },
-        codigo_baixa: { type: "string", description: "Settlement integration code (unique)" },
-        valor: { type: "number", description: "Paid amount in BRL" },
-        data: date("Payment date"),
-        codigo_conta_corrente: { type: "number", description: "Bank account ID used for the payment" },
-        observacao: { type: "string", description: "Payment notes" },
-      },
-      required: ["codigo_baixa", "valor", "data", "codigo_conta_corrente"],
+      properties: settlementFields("payment"),
+      required: ["valor", "data", "codigo_conta_corrente"],
     },
   },
   {
@@ -346,17 +363,30 @@ export const financeTools: OmieTool[] = [
   // --- Cross-cutting views ---------------------------------------------------
   {
     name: "list_financial_movements",
-    description: "List unified financial movements (AP + AR + CC) in Omie ERP",
+    description:
+      "List unified financial movements (AP + AR + CC) in Omie ERP. This is also the only endpoint with " +
+      "a due-date filter (dDtVencDe / dDtVencAte). Note: with no date filter at all it returns only the " +
+      "last 30 days, so an empty result does not mean the company has no history.",
     path: "/financas/mf/",
     call: "ListarMovimentos",
     inputSchema: {
       type: "object",
       properties: {
         ...pagingSchema("n"),
+        dDtVencDe: date("Due date from"),
+        dDtVencAte: date("Due date to"),
         dDtPagtoDe: date("Payment date from"),
         dDtPagtoAte: date("Payment date to"),
-        cNatureza: { type: "string", enum: ["R", "P", "T"], description: "Nature (R=receivable, P=payable, T=all)" },
-        cStatus: { type: "string", description: "Status (ABERTO, LIQUIDADO, VENCIDO, etc.)" },
+        dDtEmisDe: date("Issue date from"),
+        dDtEmisAte: date("Issue date to"),
+        cNatureza: { type: "string", enum: ["P", "R"], description: "Nature: P=payable, R=receivable. Omit for both" },
+        cStatus: { type: "string", description: "Status: CANCELADO, RECEBIDO, PAGO, VENCEHOJE, AVENCER, ATRASADO, EMABERTO, PAGTOPARCIAL" },
+        cTpLancamento: { type: "string", description: "Record type: CP=payables, CR=receivables, CC=bank ledger" },
+        nCodCliente: { type: "number", description: "Filter by customer / supplier ID" },
+        cCPFCNPJCliente: { type: "string", description: "Filter by customer / supplier CPF / CNPJ" },
+        nCodCC: { type: "number", description: "Filter by bank account ID" },
+        cCodCateg: { type: "string", description: "Filter by category code" },
+        cExibirDepartamentos: flag("Include the department split"),
       },
     },
     param: withPaging("n"),

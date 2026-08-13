@@ -39,7 +39,7 @@ import {
 import { omieRequest, validateArgs } from "./omie.js";
 import { TOOLS, findTool } from "./tools/index.js";
 
-const VERSION = "0.3.0";
+const VERSION = "0.4.0";
 
 const DEMO_MODE = process.argv.includes("--demo") || process.env.MCP_DEMO === "true";
 

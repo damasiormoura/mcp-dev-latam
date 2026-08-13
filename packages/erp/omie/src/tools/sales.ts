@@ -186,16 +186,60 @@ export const salesTools: OmieTool[] = [
   },
   {
     name: "update_sales_order",
-    description: "Alter an existing sales order in Omie ERP",
+    description:
+      "Alter an existing sales order in Omie ERP (AlterarPedidoVenda). Line items go in `det`, the same " +
+      "block create_order uses — `itens` is a different type belonging to DevolverPedido and is ignored here.",
     path: ORDER,
     call: "AlterarPedidoVenda",
     inputSchema: {
       type: "object",
       properties: {
-        cabecalho: { type: "object", description: "Order header: { codigo_pedido, codigo_pedido_integracao, codigo_cliente, data_previsao, etapa, ... }" },
-        itens: { type: "array", description: "Updated order items" },
-        observacoes: { type: "object", description: "Order observations" },
-        informacoes_adicionais: { type: "object", description: "Additional info (codigo_vendedor, etc.)" },
+        cabecalho: {
+          type: "object",
+          description: "Order header — identifies the order and carries any header changes",
+          properties: {
+            codigo_pedido: { type: "number", description: "Omie order ID" },
+            codigo_pedido_integracao: { type: "string", description: "Integration order code (alternative)" },
+            codigo_cliente: { type: "number", description: "Omie customer ID" },
+            data_previsao: date("Expected billing date"),
+            etapa: { type: "string", description: "Order stage" },
+            codigo_parcela: { type: "string", description: "Payment term code" },
+            qtde_parcelas: { type: "number", description: "Number of installments" },
+          },
+        },
+        det: {
+          type: "array",
+          description: "Updated line items, same shape as create_order.det — { ide, produto, inf_adic }. Set ide.acao_item=\"E\" to remove a line.",
+          items: {
+            type: "object",
+            properties: {
+              ide: {
+                type: "object",
+                properties: {
+                  codigo_item_integracao: { type: "string", description: "Integration code for this line" },
+                  codigo_item: { type: "number", description: "Omie line ID, for an existing item" },
+                  acao_item: { type: "string", enum: ["E"], description: "\"E\" removes the item" },
+                },
+              },
+              produto: {
+                type: "object",
+                properties: {
+                  codigo_produto: { type: "number", description: "Omie product ID" },
+                  codigo_produto_integracao: { type: "string", description: "Product integration code (alternative)" },
+                  quantidade: { type: "number", description: "Quantity" },
+                  valor_unitario: { type: "number", description: "Unit price in BRL" },
+                  valor_desconto: { type: "number", description: "Item discount value" },
+                },
+              },
+              inf_adic: { type: "object", description: "Per-item extras, as in create_order" },
+            },
+          },
+        },
+        observacoes: {
+          type: "object",
+          properties: { obs_venda: { type: "string", description: "Order notes" } },
+        },
+        informacoes_adicionais: { type: "object", description: "Additional info (codigo_categoria, codigo_conta_corrente, codVend, ...)" },
         frete: { type: "object", description: "Shipping details" },
       },
       required: ["cabecalho"],

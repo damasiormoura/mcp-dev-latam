@@ -136,14 +136,26 @@ export const serviceTools: OmieTool[] = [
   },
   {
     name: "list_service_orders",
-    description: "List service orders (OS) from Omie ERP",
+    description:
+      "List service orders (OS) from Omie ERP. Note the stage filter is `filtrar_por_etapa` here, not " +
+      "`etapa` as on the sales order endpoint.",
     path: OS,
     call: "ListarOS",
     inputSchema: {
       type: "object",
       properties: {
         ...pagingSchema("snake"),
-        etapa: { type: "string", description: "Order stage filter (10=OS, 20=Executar, 50=Faturar, 60=Faturado)" },
+        filtrar_por_etapa: { type: "string", description: "Stage filter (10=OS, 20=Executar, 50=Faturar, 60=Faturado)" },
+        filtrar_por_status: { type: "string", enum: ["F", "N", "C"], description: "Status: F=billed, N=not billed, C=cancelled" },
+        filtrar_por_cliente: { type: "number", description: "Filter by customer ID" },
+        filtrar_por_data_de: date("Inclusion / change date from"),
+        filtrar_por_data_ate: date("Inclusion / change date to"),
+        filtrar_por_data_previsao_de: date("Expected date from"),
+        filtrar_por_data_previsao_ate: date("Expected date to"),
+        filtrar_por_data_faturamento_de: date("Billing date from"),
+        filtrar_por_data_faturamento_ate: date("Billing date to"),
+        cExibirProdutos: flag("Include the products used"),
+        cExibirDespesas: flag("Include reimbursable expenses"),
       },
     },
     param: withPaging("snake"),

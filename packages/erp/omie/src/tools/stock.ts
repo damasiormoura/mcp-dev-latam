@@ -72,8 +72,10 @@ export const stockTools: OmieTool[] = [
       properties: {
         ...pagingSchema("n"),
         dDataPosicao: date("Position reference date"),
-        cExibirTodos: flag("Include items with zero stock"),
-        codigo_local_estoque: { type: "number", description: "Filter by warehouse location ID" },
+        cExibeTodos: flag("Include items with zero stock (default N)"),
+        codigo_local_estoque: { type: "number", description: "Filter by warehouse location ID (list_stock_locations)" },
+        lista_local_estoque: { type: "string", description: "Comma-separated list of warehouse location IDs" },
+        cTipoItem: { type: "string", description: "Item type code, 2 chars (from the product's fiscal tab)" },
       },
     },
     param: withPaging("n"),
