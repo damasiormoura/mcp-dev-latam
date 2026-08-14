@@ -35,6 +35,13 @@ _Data: 2026-08-12 — versão auditada: `mcp-omie` 0.2.2 (30 tools, `src/index.t
 >   genuinamente condicionais (não "pelo menos um de N") deixados de fora e
 >   documentados abaixo. Demo mode cresceu de 9 para 22 tools curadas,
 >   verificadas contra o tipo de resposta real da Omie.
+> - **0.6.1** — **seção 6** (nova): corrigida a paginação de
+>   `list_stock_adjustments` (defeito introduzido em 0.3.0) e expostos os
+>   filtros documentados em 11 tools de listagem que os aceitavam sem
+>   declará-los. O teste de contrato passou a comparar cada campo declarado
+>   contra um snapshot da referência publicada pela Omie
+>   (`scripts/omie-doc.py` gera, `src/__tests__/fixtures/` guarda), o que
+>   fecha a classe de defeito comum a 0.2.3, 0.4.0 e 0.6.1.
 > - **Aberto:** o que restou da seção 5 — CRM, contador, ordem de produção,
 >   contratos de serviço, tabelas de preço.
 
@@ -619,7 +626,101 @@ automação de contas a pagar.
 
 ---
 
-## 6. Sequência sugerida
+## 6. Filtros documentados mas não declarados — fechado em 0.6.1
+
+Encontrado a partir de um relato de erro: buscar categoria por nome falhava no
+conector claude.ai e funcionava no Claude Code. A causa não era o transporte —
+o servidor sempre repassou `descricao` e a Omie sempre respondeu certo. Era o
+**schema**: `list_categories` não declarava `descricao`, e um cliente que
+valida os argumentos contra o schema declarado (o conector claude.ai valida; o
+harness do Claude Code não) rejeita o argumento antes de chegar ao servidor.
+
+Na prática o filtro existia mas era inalcançável para metade dos clientes — e,
+para o agente, invisível: sem o campo no schema, a única estratégia que resta
+é paginar um plano de contas de centenas de linhas.
+
+### 6.1 `list_stock_adjustments` — paginação errada (defeito de 0.3.0)
+
+`/estoque/ajuste/` é uma das poucas rotas de `/estoque/` que soletra
+`pagina`/`registros_por_pagina`; a tool mandava `nPagina`/`nRegPorPagina`. Toda
+chamada paginada morria com:
+
+```
+ERROR: Tag [NPAGINA] não faz parte da estrutura do tipo complexo
+[estoque_mov_listar_request]!
+```
+
+Confirmado ao vivo antes e depois da correção.
+
+### 6.2 As 11 tools que escondiam filtros
+
+Varredura de cada tool de listagem contra o tipo de request publicado. Os
+campos foram declarados como a Omie os documenta — sem tradução de nomes, para
+que o schema continue conferível contra a referência:
+
+| Tool | Filtros expostos |
+|---|---|
+| `list_categories` | `descricao`, `filtrar_por_tipo`, `filtrar_apenas_ativo` |
+| `get_bank_accounts` | `filtrar_por_descricao`, `codigo`, `codigo_integracao` |
+| `list_salespeople` | `filtrar_por_nome`, `filtrar_por_email` |
+| `list_projects` | `nome_projeto` |
+| `list_payment_terms` | ordenação |
+| `list_services` | `cDescricao`, `cCodigo`, `inativo`, datas de inclusão/alteração |
+| `list_customers_summary` | `clientesFiltro`, `clientesPorCodigo`, `exibir_obs` |
+| `list_orders` | `status_pedido`, `filtrar_por_cliente`, `filtrar_por_vendedor`, faixas de número e datas, `apenas_resumo` |
+| `list_invoices` | `nIdCliente`, `cnpj_cpf`, faixa de número, `cSerie`, `tpNF`, quatro faixas de data, `cApenasResumo` |
+| `list_order_stages` | `nCodPed`, `cEtapa`, `dDtInicial`/`dDtFinal` |
+| `list_pix` | `cStatus`, `dEmissaoDe`/`dEmissaoAte` |
+
+Três detalhes que só aparecem lendo endpoint por endpoint:
+
+- **`ordem_decrescente` × `ordem_descrescente`.** A Omie publica as duas
+  grafias, e qual delas vale muda por endpoint: `/geral/parcelas/` e `/nfe/`
+  usam a correta, `/geral/projetos/` e `/geral/vendedores/` só têm a com
+  erro de digitação, `/produtos/pedido/` marca a segunda como DEPRECATED e
+  `/estoque/ajuste/` não tem flag de ordem nenhuma. Por isso
+  `orderingFilters()` recebe o nome do campo por chamada em vez de assumir um.
+- **`apenas_importado_api`** está DEPRECATED em `ListarVendedores`, mas
+  continua válido em `/geral/projetos/`, `/geral/parcelas/` e
+  `/estoque/ajuste/`. Removido só de `list_salespeople`.
+- **`etapa` × `status_pedido`** em `list_orders` respondem perguntas
+  diferentes (coluna do fluxo × desfecho fiscal) e se combinam; a descrição da
+  tool passou a dizer isso.
+
+### 6.3 O teste que impede a regressão
+
+Três classes de defeito deste servidor foram a mesma coisa: **um nome de campo
+que a Omie não aceita.**
+
+| Versão | Defeito | Sintoma |
+|---|---|---|
+| 0.2.3 | duas tools chamavam métodos inexistentes | erro em toda chamada |
+| 0.4.0 | sete tools declaravam filtros fora do request type | `200` com o filtro descartado silenciosamente |
+| 0.6.1 | paginação com a grafia errada | erro em toda chamada paginada |
+
+Os testes existentes fixavam `(path, call)` e a forma do `param`, mas nenhum
+deles conseguia ver um *nome de campo* fora do contrato. `contract.test.ts`
+agora compara os campos declarados contra um snapshot da referência publicada
+e afirma, tool a tool: nada declarado que o request type não contenha, nada
+marcado DEPRECATED, a grafia de paginação da própria rota, e que o `param`
+builder só injeta campos reais.
+
+O snapshot é commitado, não buscado em runtime — a CI não pode depender da
+Omie estar no ar, e mudança no que se acredita que a API aceita merece revisão
+humana. `scripts/omie-doc.py` regenera:
+
+```bash
+python3 scripts/omie-doc.py fixture \
+  --out packages/erp/omie/src/__tests__/fixtures/omie-request-fields.json
+```
+
+Na primeira execução o teste pegou três erros reais, dois deles recém-escritos
+por esta mesma leva de mudanças e um pré-existente da 0.3.0 que ninguém tinha
+notado.
+
+---
+
+## 7. Sequência sugerida
 
 1. ~~**Corrigir as 7 quebradas** (seção 1)~~ — feito em 0.2.3.
 2. **Corrigir `pay_account_payable`** (2.5) — é a tool que move dinheiro e a

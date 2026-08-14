@@ -1,4 +1,4 @@
-import { OmieTool, listOnly, pagingSchema, withPaging, flag } from "./types.js";
+import { OmieTool, pagingSchema, withPaging, flag, changeTrackingFilters } from "./types.js";
 
 const PATH = "/geral/clientes/";
 
@@ -101,10 +101,22 @@ export const customerTools: OmieTool[] = [
   {
     name: "list_customers_summary",
     description:
-      "List customers in the reduced form (ListarClientesResumido) — fewer fields per record than " +
-      "list_customers, so it stays within a page budget when scanning a large base.",
+      "List or search customers in the reduced form (ListarClientesResumido) — fewer fields per record " +
+      "than list_customers, so it stays within a page budget when scanning a large base. Accepts the " +
+      "same clientesFiltro object as list_customers.",
     path: PATH,
     call: "ListarClientesResumido",
-    ...listOnly("snake"),
+    inputSchema: {
+      type: "object",
+      properties: {
+        ...pagingSchema("snake"),
+        ...changeTrackingFilters(),
+        clientesFiltro: { type: "object", description: "Filter object (nome_fantasia, cnpj_cpf, razao_social, etc.)" },
+        clientesPorCodigo: { type: "array", description: "Filter by a list of customer codes" },
+        apenas_importado_api: flag("Only API-created records"),
+        exibir_obs: flag("Include customer notes"),
+      },
+    },
+    param: withPaging("snake"),
   },
 ];

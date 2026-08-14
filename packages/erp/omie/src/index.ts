@@ -41,7 +41,7 @@ import {
 import { omieRequest, validateArgs, CREDENTIALS_CONFIGURED } from "./omie.js";
 import { TOOLS, findTool } from "./tools/index.js";
 
-const VERSION = "0.6.0";
+const VERSION = "0.6.1";
 
 const DEMO_MODE = process.argv.includes("--demo") || process.env.MCP_DEMO === "true";
 

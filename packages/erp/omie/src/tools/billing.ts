@@ -1,4 +1,4 @@
-import { OmieTool, pagingSchema, withPaging } from "./types.js";
+import { OmieTool, pagingSchema, withPaging, date } from "./types.js";
 
 const PIX = "/financas/pix/";
 const BOLETO = "/financas/contareceberboleto/";
@@ -61,10 +61,18 @@ export const billingTools: OmieTool[] = [
   },
   {
     name: "list_pix",
-    description: "List PIX charges in Omie ERP (ListarPix)",
+    description: "List or search PIX charges in Omie ERP (ListarPix)",
     path: PIX,
     call: "ListarPix",
-    inputSchema: { type: "object", properties: pagingSchema("n") },
+    inputSchema: {
+      type: "object",
+      properties: {
+        ...pagingSchema("n"),
+        cStatus: { type: "string", enum: ["LIQUIDADO", "CANCELADO", "REGISTRADO"], description: "PIX status" },
+        dEmissaoDe: date("Issue date from"),
+        dEmissaoAte: date("Issue date to"),
+      },
+    },
     param: withPaging("n"),
   },
   {

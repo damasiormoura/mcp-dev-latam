@@ -1,4 +1,4 @@
-import { OmieTool, listOnly, pagingSchema, withPaging, date, flag } from "./types.js";
+import { OmieTool, listOnly, pagingSchema, withPaging, date, flag, changeTrackingFilters, orderingFilters } from "./types.js";
 
 const ORDER = "/produtos/pedido/";
 const FAT = "/produtos/pedidovendafat/";
@@ -168,14 +168,32 @@ export const salesTools: OmieTool[] = [
   },
   {
     name: "list_orders",
-    description: "List sales orders from Omie ERP",
+    description:
+      "List or search sales orders from Omie ERP. Note `etapa` selects the workflow column while " +
+      "`status_pedido` selects the fiscal outcome (FATURADO, CANCELADO, ...) — they answer different " +
+      "questions and can be combined.",
     path: ORDER,
     call: "ListarPedidos",
     inputSchema: {
       type: "object",
       properties: {
         ...pagingSchema("snake"),
+        ...changeTrackingFilters(),
+        ...orderingFilters("ordenar_por"),
         etapa: { type: "string", description: "Order stage filter (10=Pedido, 20=Separar, 50=Faturar, 60=Faturado)" },
+        status_pedido: { type: "string", description: "Order status: FATURADO, CANCELADO, AUTORIZADO, DENEGADO, DEVOLVIDO" },
+        filtrar_por_cliente: { type: "number", description: "Filter by customer ID" },
+        filtrar_por_vendedor: { type: "number", description: "Filter by salesperson ID" },
+        filtrar_por_projeto: { type: "number", description: "Filter by project ID" },
+        numero_pedido_de: { type: "number", description: "Order number range, from" },
+        numero_pedido_ate: { type: "number", description: "Order number range, to" },
+        data_previsao_de: date("Expected billing date from"),
+        data_previsao_ate: date("Expected billing date to"),
+        data_faturamento_de: date("Billing date from"),
+        data_faturamento_ate: date("Billing date to"),
+        data_cancelamento_de: date("Cancellation date from"),
+        data_cancelamento_ate: date("Cancellation date to"),
+        apenas_resumo: flag("Return only the order summary — much smaller payload per record"),
       },
     },
     param: withPaging("snake"),
@@ -386,19 +404,52 @@ export const salesTools: OmieTool[] = [
       "codes that create_order.cabecalho.etapa and change_order_stage expect.",
     path: "/produtos/pedidoetapas/",
     call: "ListarEtapasPedido",
-    ...listOnly("n"),
+    inputSchema: {
+      type: "object",
+      properties: {
+        ...pagingSchema("n"),
+        ...orderingFilters("cOrdenarPor", "cOrdemDecrescente"),
+        nCodPed: { type: "number", description: "Filter by Omie order ID" },
+        cCodIntPed: { type: "string", description: "Filter by order integration code" },
+        cEtapa: { type: "string", description: "Filter by stage code" },
+        dDtInicial: date("Date range from"),
+        dDtFinal: date("Date range to"),
+      },
+    },
+    param: withPaging("n"),
   },
   {
     name: "list_invoices",
-    description: "List invoices (NF) from Omie ERP",
+    description:
+      "List or search invoices (NF) from Omie ERP. Set cApenasResumo=\"S\" when scanning a period — the " +
+      "full NF record is large, and the summary carries the key, number and total.",
     path: NF,
     call: "ListarNF",
     inputSchema: {
       type: "object",
       properties: {
         ...pagingSchema("snake"),
-        dEmiInicial: date("Start emission date"),
-        dEmiFinal: date("End emission date"),
+        ...changeTrackingFilters(),
+        ...orderingFilters("ordenar_por", "ordem_decrescente"),
+        dEmiInicial: date("Emission date from"),
+        dEmiFinal: date("Emission date to"),
+        dRegInicial: date("Registration date from"),
+        dRegFinal: date("Registration date to"),
+        dSaiEntInicial: date("Exit/entry date from"),
+        dSaiEntFinal: date("Exit/entry date to"),
+        dCanInicial: date("Cancellation date from"),
+        dCanFinal: date("Cancellation date to"),
+        filtrar_por_status: { type: "string", enum: ["N", "C"], description: "NF status: N=not cancelled, C=cancelled" },
+        tpNF: { type: "string", enum: ["0", "1"], description: "Operation type: 0=inbound, 1=outbound" },
+        cSerie: { type: "string", description: "NF-e series" },
+        nNFInicial: { type: "number", description: "Invoice number range, from" },
+        nNFFinal: { type: "number", description: "Invoice number range, to" },
+        nIdCliente: { type: "number", description: "Filter by customer ID" },
+        cnpj_cpf: { type: "string", description: "Filter by customer CNPJ / CPF" },
+        cNumeroPedidoCliente: { type: "string", description: "Filter by the customer's own order number" },
+        opPedido: { type: "string", description: "Originating sales order operation code, 2 chars (e.g. 01=service, 11=product)" },
+        cApenasResumo: flag("Return only the NF summary instead of the full record"),
+        cDetalhesPedido: flag("Include details of the originating order"),
       },
     },
     param: withPaging("snake"),

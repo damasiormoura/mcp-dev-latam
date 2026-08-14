@@ -85,3 +85,37 @@ export function date(description: string) {
 export function flag(description: string) {
   return { type: "string", enum: ["S", "N"], description };
 }
+
+/**
+ * The "records created or changed in this window" filter set, which Omie
+ * repeats verbatim across most snake_case listing endpoints. Note these track
+ * *inclusion/alteration* time, not the business date of the record — an
+ * endpoint that also filters by issue or due date spells that separately
+ * (filtrar_por_emissao_*, dDtVenc*, and so on).
+ */
+export function changeTrackingFilters(): Record<string, unknown> {
+  return {
+    filtrar_por_data_de: date("Filter records created/changed from this date"),
+    filtrar_por_data_ate: date("Filter records created/changed up to this date"),
+    filtrar_apenas_inclusao: flag("Only newly created records"),
+    filtrar_apenas_alteracao: flag("Only changed records"),
+  };
+}
+
+/**
+ * Ordering, where the endpoint documents it. Worth exposing because without it
+ * an agent looking for "the most recent N" has to page through everything.
+ *
+ * `descField` must be passed per endpoint and can be omitted entirely, because
+ * Omie is not consistent here and guessing gets it wrong three different ways:
+ * some endpoints ship the correctly-spelled `ordem_decrescente`, some ship
+ * only the misspelled `ordem_descrescente`, some ship both with one marked
+ * DEPRECATED, and /estoque/ajuste/ has no descending flag at all. The contract
+ * test checks each choice against the published request type.
+ */
+export function orderingFilters(byField: string, descField?: string): Record<string, unknown> {
+  return {
+    [byField]: { type: "string", description: "Sort key, e.g. CODIGO (endpoint-specific; defaults to code order)" },
+    ...(descField ? { [descField]: flag("Sort descending") } : {}),
+  };
+}
