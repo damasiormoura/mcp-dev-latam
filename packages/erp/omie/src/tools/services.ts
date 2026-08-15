@@ -1,4 +1,4 @@
-import { OmieTool, listOnly, pagingSchema, withPaging, date, flag } from "./types.js";
+import { OmieTool, listOnly, pagingSchema, withPaging, date, flag, orderingFilters } from "./types.js";
 
 const OS = "/servicos/os/";
 const OSP = "/servicos/osp/";
@@ -242,11 +242,26 @@ export const serviceTools: OmieTool[] = [
   {
     name: "list_services",
     description:
-      "List the service catalogue in Omie ERP (ListarCadastroServico). Resolves the nCodServico that " +
-      "create_service_order items reference, along with their LC 116 and municipal codes.",
+      "List or search the service catalogue in Omie ERP (ListarCadastroServico). Resolves the " +
+      "nCodServico that create_service_order items reference, along with their LC 116 and municipal " +
+      "codes — pass cDescricao or cCodigo to find one rather than paging.",
     path: "/servicos/servico/",
     call: "ListarCadastroServico",
-    ...listOnly("n"),
+    inputSchema: {
+      type: "object",
+      properties: {
+        ...pagingSchema("n"),
+        ...orderingFilters("cOrdenarPor", "cOrdemDecrescente"),
+        cDescricao: { type: "string", description: "Filter by the service's short description" },
+        cCodigo: { type: "string", description: "Filter by service code" },
+        inativo: flag("Filter by inactive status"),
+        dInclusaoInicial: date("Created from"),
+        dInclusaoFinal: date("Created to"),
+        dAlteracaoInicial: date("Changed from"),
+        dAlteracaoFinal: date("Changed to"),
+      },
+    },
+    param: withPaging("n"),
   },
   {
     name: "list_nfse",

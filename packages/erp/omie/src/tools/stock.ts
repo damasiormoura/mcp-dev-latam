@@ -1,4 +1,4 @@
-import { OmieTool, listOnly, pagingSchema, withPaging, date, flag } from "./types.js";
+import { OmieTool, listOnly, pagingSchema, withPaging, date, flag, changeTrackingFilters, orderingFilters } from "./types.js";
 
 const ADJUST = "/estoque/ajuste/";
 const QUERY = "/estoque/consulta/";
@@ -58,10 +58,29 @@ export const stockTools: OmieTool[] = [
   },
   {
     name: "list_stock_adjustments",
-    description: "List inventory adjustments in Omie ERP (ListarAjusteEstoque)",
+    description:
+      "List inventory adjustments in Omie ERP (ListarAjusteEstoque). Note this endpoint paginates with " +
+      "the snake_case spelling (pagina / registros_por_pagina), unlike the rest of /estoque/ which uses " +
+      "nPagina / nRegPorPagina.",
     path: ADJUST,
     call: "ListarAjusteEstoque",
-    ...listOnly("n"),
+    inputSchema: {
+      type: "object",
+      properties: {
+        ...pagingSchema("snake"),
+        ...orderingFilters("ordenar_por"),
+        id_prod: { type: "number", description: "Filter by Omie product ID" },
+        cod_int_ajuste: { type: "string", description: "Filter by the adjustment's integration code" },
+        codigo_local_estoque: { type: "number", description: "Filter by warehouse location ID (list_stock_locations)" },
+        tipo: { type: "string", enum: ["ENT", "SAI", "SLD", "TRF"], description: "Adjustment type: ENT=entry, SAI=exit, SLD=balance, TRF=transfer" },
+        origem: { type: "string", enum: ["AJU", "PDV"], description: "Movement origin: AJU=manual adjustment, PDV=point of sale" },
+        motivo: { type: "string", description: "Reason code, 3 chars (INV, PER, INI, CMC, ...)" },
+        data_movimento_de: date("Movement date from"),
+        data_movimento_ate: date("Movement date to"),
+        apenas_importado_api: flag("Only records created through the API"),
+      },
+    },
+    param: withPaging("snake"),
   },
   {
     name: "get_stock_position",
@@ -126,6 +145,10 @@ export const stockTools: OmieTool[] = [
       "codigo_local_estoque that create_stock_adjustment, get_stock_position and sales order items expect.",
     path: "/estoque/local/",
     call: "ListarLocaisEstoque",
-    ...listOnly("n"),
+    inputSchema: {
+      type: "object",
+      properties: { ...pagingSchema("n"), ...changeTrackingFilters() },
+    },
+    param: withPaging("n"),
   },
 ];

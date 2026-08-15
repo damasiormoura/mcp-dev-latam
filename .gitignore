@@ -8,3 +8,4 @@ dist/
 .env
 *.local*
 .DS_Store
+.omie-doc-cache/
