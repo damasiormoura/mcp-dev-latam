@@ -1,4 +1,4 @@
-import { OmieTool, date } from "./types.js";
+import { OmieTool, date, notes } from "./types.js";
 
 const PATH = "/produtos/pedidocompra/";
 
@@ -112,6 +112,9 @@ export const purchaseTools: OmieTool[] = [
       },
       required: ["cabecalho_incluir", "produtos_incluir"],
     },
+    // cObsInt, not cObs: the internal notes stay out of the document the
+    // supplier receives.
+    notes: notes("always", "cabecalho_incluir", "cObsInt"),
   },
   {
     name: "list_purchase_orders",

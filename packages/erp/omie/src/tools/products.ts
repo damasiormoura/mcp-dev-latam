@@ -1,4 +1,4 @@
-import { OmieTool, pagingSchema, withPaging, flag } from "./types.js";
+import { OmieTool, pagingSchema, withPaging, flag, notes } from "./types.js";
 
 const PATH = "/geral/produtos/";
 
@@ -45,6 +45,7 @@ export const productTools: OmieTool[] = [
       properties: productFields,
       required: ["descricao", "codigo", "unidade", "ncm", "valor_unitario"],
     },
+    notes: notes("always", "obs_internas"),
   },
   {
     name: "get_product",
@@ -76,6 +77,7 @@ export const productTools: OmieTool[] = [
       },
       anyOfRequired: ["codigo_produto", "codigo_produto_integracao", "codigo"],
     },
+    notes: notes("if-present", "obs_internas"),
   },
   {
     name: "upsert_product",
@@ -89,5 +91,7 @@ export const productTools: OmieTool[] = [
       properties: productFields,
       required: ["codigo_produto_integracao"],
     },
+    // An upsert may land on an existing product, so it follows the update rule.
+    notes: notes("if-present", "obs_internas"),
   },
 ];

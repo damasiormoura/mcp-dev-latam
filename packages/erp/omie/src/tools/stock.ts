@@ -1,4 +1,4 @@
-import { OmieTool, listOnly, pagingSchema, withPaging, date, flag, changeTrackingFilters, orderingFilters } from "./types.js";
+import { OmieTool, listOnly, pagingSchema, withPaging, date, flag, changeTrackingFilters, orderingFilters, notes } from "./types.js";
 
 const ADJUST = "/estoque/ajuste/";
 const QUERY = "/estoque/consulta/";
@@ -55,6 +55,8 @@ export const stockTools: OmieTool[] = [
       required: ["data", "tipo", "origem", "motivo", "quan", "valor", "obs"],
       anyOfRequired: ["id_prod", "cod_int"],
     },
+    // `obs` is required here, so this always appends rather than creates.
+    notes: notes("always", "obs"),
   },
   {
     name: "list_stock_adjustments",

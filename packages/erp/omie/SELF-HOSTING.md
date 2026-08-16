@@ -215,6 +215,45 @@ configuration change, because the env file lives outside both git and the image
 fails identically. Configuration changes deserve more care than code changes
 here, not less.
 
+### The audit trail needs a volume, or it dies with the container
+
+The server logs every tool call against the identity in the caller's token
+(see the README). Those lines go to stderr, which means `docker logs` — and
+`docker logs` is gone the moment the container is recreated, which a deploy
+does on every release and after every env-file change.
+
+If the trail is meant to answer "who settled that title last quarter", stderr
+is not where it can live. Point `MCP_AUDIT_LOG` at a path on a mounted volume
+so it survives `docker rm`, and treat that file as the record.
+
+**The mounted directory has to be writable by the container's non-root user.**
+The image runs as `mcp`, not root, so a volume left owned by root produces a
+server that starts, serves, and logs nothing to the file — it says so once on
+stderr and falls back there, which is easy to miss if nobody is watching the
+logs at that moment. `chown` the directory to the runtime UID when mounting it.
+
+Two more consequences worth planning for rather than discovering:
+
+- **The file grows without bound.** Nothing rotates it. Hand it to logrotate,
+  or ship it somewhere that ages data out on purpose.
+- **It is evidence about people.** It names who did what and when, so it
+  deserves the access controls and retention rules that implies — not
+  world-readable next to the application it audits.
+
+### Attribution stops at the App Key
+
+Every call this server makes to Omie carries the same App Key, so Omie's own
+change history attributes every change to the integration app. The audit log
+and the notes-field stamp exist precisely because that native history cannot
+answer the question.
+
+Registering one Omie app per person and choosing the credential per request
+from the verified token would push attribution into Omie itself. That is a
+larger change than it sounds: it multiplies the secrets to rotate and the rate
+limits to reason about, since Omie's throttling and its 30-minute block are per
+IP + App Key + method. Worth confirming the plan even allows multiple
+integration apps before designing for it.
+
 ### Verify health over the network clients use
 
 A container can be healthy from inside its host and unreachable through the

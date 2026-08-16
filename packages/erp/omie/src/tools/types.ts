@@ -5,6 +5,10 @@
  * before 0.2.3 — visible next to the schema it belongs to, and lets the
  * contract test derive its expectations from the definitions themselves.
  */
+import type { NotesTarget } from "../audit.js";
+
+export { notes } from "../audit.js";
+export type { NotesTarget } from "../audit.js";
 export type OmieTool = {
   name: string;
   description: string;
@@ -19,6 +23,17 @@ export type OmieTool = {
    * schema mirrors the Omie request type field for field.
    */
   param?: (args: Record<string, unknown>) => unknown;
+  /**
+   * Where this tool's free-text notes field lives, when it has one. Used to
+   * append caller attribution so the person behind a change is visible inside
+   * Omie itself — every call reaches Omie under the same App Key, so without
+   * this the ERP's own history shows only the integration app.
+   *
+   * Declared here, next to the schema, for the same reason `path` and `call`
+   * are: the field name has to match the Omie request type, and that is the
+   * one place it can be checked against it.
+   */
+  notes?: NotesTarget;
 };
 
 /**
