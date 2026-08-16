@@ -303,9 +303,9 @@ const STAMP_ENABLED = process.env.MCP_AUDIT_STAMP !== "false";
  */
 function toAscii(text: string): string {
   return text
-    .normalize("NFD")
-    .replace(/[̀-ͯ]/g, "")
-    .replace(/[^\x20-\x7E]/g, "");
+    .normalize("NFD") // splits an accented letter into base + combining mark
+    .replace(/\p{M}/gu, "") // drop the combining marks, keeping the base letters
+    .replace(/[^ -~]/gu, ""); // then anything still outside printable ASCII
 }
 
 /**
