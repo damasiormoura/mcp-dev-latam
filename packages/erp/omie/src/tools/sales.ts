@@ -1,4 +1,4 @@
-import { OmieTool, listOnly, pagingSchema, withPaging, date, flag, changeTrackingFilters, orderingFilters } from "./types.js";
+import { OmieTool, listOnly, pagingSchema, withPaging, date, flag, changeTrackingFilters, orderingFilters, notes } from "./types.js";
 
 const ORDER = "/produtos/pedido/";
 const FAT = "/produtos/pedidovendafat/";
@@ -165,6 +165,7 @@ export const salesTools: OmieTool[] = [
       },
       required: ["cabecalho", "det", "informacoes_adicionais"],
     },
+    notes: notes("always", "observacoes", "obs_venda"),
   },
   {
     name: "list_orders",
@@ -266,6 +267,9 @@ export const salesTools: OmieTool[] = [
       },
       required: ["cabecalho"],
     },
+    // if-present: AlterarPedidoVenda replaces the notes it is sent, so creating
+    // the field here would blank whatever the order already carried.
+    notes: notes("if-present", "observacoes", "obs_venda"),
   },
   {
     name: "get_order_status",

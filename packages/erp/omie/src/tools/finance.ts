@@ -1,4 +1,4 @@
-import { OmieTool, listOnly, pagingSchema, withPaging, date, flag } from "./types.js";
+import { OmieTool, listOnly, pagingSchema, withPaging, date, flag, notes } from "./types.js";
 
 const AR = "/financas/contareceber/";
 const AP = "/financas/contapagar/";
@@ -92,6 +92,7 @@ export const financeTools: OmieTool[] = [
       properties: titleFields,
       required: ["codigo_lancamento_integracao", "codigo_cliente_fornecedor", "data_vencimento", "valor_documento", "codigo_categoria"],
     },
+    notes: notes("always", "observacao"),
   },
   {
     name: "get_account_receivable",
@@ -110,6 +111,7 @@ export const financeTools: OmieTool[] = [
       properties: { codigo_lancamento_omie: titleKey.codigo_lancamento_omie, ...titleFields },
       anyOfRequired: titleKeyRequired,
     },
+    notes: notes("if-present", "observacao"),
   },
   {
     name: "receive_account_receivable",
@@ -125,6 +127,8 @@ export const financeTools: OmieTool[] = [
       required: ["valor", "data", "codigo_conta_corrente"],
       anyOfRequired: ["codigo_lancamento", "codigo_lancamento_integracao"],
     },
+    // A settlement is a new record, so the notes field starts empty.
+    notes: notes("always", "observacao"),
   },
   {
     name: "cancel_receipt",
@@ -159,6 +163,7 @@ export const financeTools: OmieTool[] = [
       },
       required: ["codigo_lancamento_integracao", "codigo_cliente_fornecedor", "data_vencimento", "valor_documento", "codigo_categoria"],
     },
+    notes: notes("always", "observacao"),
   },
   {
     name: "list_accounts_payable",
@@ -202,6 +207,7 @@ export const financeTools: OmieTool[] = [
       properties: { codigo_lancamento_omie: titleKey.codigo_lancamento_omie, ...titleFields },
       anyOfRequired: titleKeyRequired,
     },
+    notes: notes("if-present", "observacao"),
   },
   {
     name: "pay_account_payable",
@@ -218,6 +224,7 @@ export const financeTools: OmieTool[] = [
       required: ["valor", "data", "codigo_conta_corrente"],
       anyOfRequired: ["codigo_lancamento", "codigo_lancamento_integracao"],
     },
+    notes: notes("always", "observacao"),
   },
   {
     name: "cancel_payment",
@@ -300,6 +307,7 @@ export const financeTools: OmieTool[] = [
       },
       required: ["cCodIntLanc", "cabecalho"],
     },
+    notes: notes("always", "detalhes", "cObs"),
   },
   {
     name: "list_cash_entries",
@@ -351,6 +359,7 @@ export const financeTools: OmieTool[] = [
       },
       anyOfRequired: ["cCodIntLanc", "nCodLanc"],
     },
+    notes: notes("if-present", "detalhes", "cObs"),
   },
   {
     name: "delete_cash_entry",
