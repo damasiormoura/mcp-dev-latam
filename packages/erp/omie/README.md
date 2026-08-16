@@ -324,6 +324,73 @@ genuinely need that — a loopback-only bind, say — set `MCP_INSECURE_HTTP=tru
 to say so deliberately. stdio is unaffected either way: there the operating
 system is the trust boundary.
 
+## Audit trail — who executed what
+
+Every caller over HTTP authenticates as an individual, so the bearer token
+names a person. Everything downstream does not: all calls reach Omie under one
+shared App Key, so Omie's own history attributes every change to the
+integration app, no matter who asked for it.
+
+The server closes that gap from both ends.
+
+**1. An audit log**, one JSON object per tool call, written to stderr and — if
+`MCP_AUDIT_LOG` is set — appended to a file:
+
+```json
+{"ts":"2026-08-16T10:31:04.220Z","actor":"maria@example.com",
+ "caller":{"sub":"f47ac10b-…","email":"maria@example.com","sessionId":"6b1f…"},
+ "tool":"pay_account_payable","path":"/financas/contapagar/","call":"LancarPagamento",
+ "outcome":"ok","durationMs":412,"args":{"codigo_lancamento":3001,"valor":1500.5},
+ "result":{"codigo_baixa":7001},"stamped":true}
+```
+
+Every call is recorded, including the ones that never reached Omie — a rejected
+settlement attempt is as interesting as a successful one. `result` carries the
+identifiers Omie returned, which is what ties a log line to the actual ERP
+record.
+
+Arguments are summarised down to identifying and monetary fields rather than
+logged whole, so a file that exists to answer "who did this" doesn't accumulate
+customer records and tax IDs. `MCP_AUDIT_FULL_ARGS=true` logs them in full.
+
+Because stderr is lost when a container is recreated, point `MCP_AUDIT_LOG` at
+a mounted volume if the trail needs to outlive a deploy:
+
+```bash
+docker run -d --name mcp-omie \
+  -v /var/log/mcp-omie:/var/log/mcp-omie \
+  -e MCP_AUDIT_LOG=/var/log/mcp-omie/audit.jsonl \
+  … mcp-omie
+```
+
+**2. Attribution inside Omie.** For write tools that have a free-text notes
+field, the caller is appended to it, so someone looking at the record in the
+ERP sees who put it there without leaving the ERP:
+
+```
+Pedido urgente [via MCP: maria@example.com at 2026-08-16 10:31Z]
+```
+
+Creates always get the stamp. **Updates only get it when the caller was already
+writing to that field** — Omie replaces the notes it is sent, so stamping an
+update that omitted them would erase whatever the record already had. Losing
+existing data to record an audit note is a worse outcome than no note, so the
+tools that call `Alterar*`/`Upsert*` never create the field. Set
+`MCP_AUDIT_STAMP=false` to leave ERP data untouched entirely; the log is
+unaffected.
+
+Neither half replaces the other: the log is complete but lives on this side of
+the API, and the stamp is visible in Omie but only exists where a notes field
+does.
+
+### Attributing to a person in Omie's own history
+
+Both mechanisms are this server's, not Omie's. Omie's native change history
+still shows the integration app, because that is what the App Key identifies.
+Making Omie itself attribute to a person would mean registering a separate
+App Key per user and selecting the credential per request from the verified
+token — worth checking against your Omie plan before assuming it's available.
+
 ## Sandbox / Testing
 
 Omie provides a sandbox via app registration. Create an app to get test credentials.
@@ -349,6 +416,9 @@ Omie provides a sandbox via app registration. Create an app to get test credenti
 | `MCP_DEMO` | No | `true` (or `--demo`) returns canned responses without calling Omie |
 | `OMIE_REQUEST_TIMEOUT_MS` | No | Per-request timeout to Omie, in ms (default `20000`) |
 | `MCP_SESSION_IDLE_TIMEOUT_MS` | HTTP only | Idle HTTP session eviction, in ms (default `1800000` / 30 min) |
+| `MCP_AUDIT_LOG` | No | File to append JSONL audit entries to, in addition to stderr. Use a mounted volume — stderr does not survive `docker rm` |
+| `MCP_AUDIT_FULL_ARGS` | No | `true` logs whole argument objects instead of the identifying/monetary summary |
+| `MCP_AUDIT_STAMP` | No | `false` stops appending caller attribution to Omie notes fields |
 
 `MCP_AUTH_ISSUER` and `MCP_AUTH_RESOURCE` are required together: the HTTP
 transport refuses to start unless both are set or `MCP_INSECURE_HTTP=true` is.
@@ -411,7 +481,18 @@ verified against Omie's real response type. See
 and — a few genuinely conditional fields, like `create_invoice`'s `nNF`
 needing `serie` — what's deliberately still not.
 
+### v0.7 (shipped)
+An audit trail: the bearer token's identity is kept rather than verified and
+discarded, so every tool call is logged against the person who made it, and
+write tools append that person to the record's notes field inside Omie. Closes
+the gap left by one shared App Key, which made every change look like the
+integration app regardless of who asked for it. See
+[Audit trail](#audit-trail--who-executed-what) above.
+
 ### Next
+- Per-user Omie App Keys, so Omie's own change history attributes to a person
+  rather than to the integration app (depends on the Omie plan allowing more
+  than one integration app per tenant)
 - `create_production_order` — `/produtos/op/`
 - `create_service_contract` — `/servicos/contrato/`
 - `reconcile_bank_transaction` — bank reconciliation matching
