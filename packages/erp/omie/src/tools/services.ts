@@ -1,4 +1,4 @@
-import { OmieTool, listOnly, pagingSchema, withPaging, date, flag, orderingFilters } from "./types.js";
+import { OmieTool, listOnly, pagingSchema, withPaging, date, flag, orderingFilters, notes } from "./types.js";
 
 const OS = "/servicos/os/";
 const OSP = "/servicos/osp/";
@@ -134,6 +134,7 @@ export const serviceTools: OmieTool[] = [
       },
       required: ["Cabecalho", "InformacoesAdicionais", "ServicosPrestados"],
     },
+    notes: notes("always", "Observacoes", "cObsOS"),
   },
   {
     name: "list_service_orders",
@@ -197,6 +198,8 @@ export const serviceTools: OmieTool[] = [
       },
       required: ["Cabecalho"],
     },
+    // if-present: AlterarOS replaces the notes it is sent.
+    notes: notes("if-present", "Observacoes", "cObsOS"),
   },
   {
     name: "change_service_order_stage",
