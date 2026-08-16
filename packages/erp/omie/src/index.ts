@@ -45,7 +45,7 @@ import {
 
 import { omieRequest, validateArgs, CREDENTIALS_CONFIGURED } from "./omie.js";
 import { TOOLS, findTool } from "./tools/index.js";
-import { type Caller, buildEntry, currentCaller, record, stamp, withCaller } from "./audit.js";
+import { type Caller, buildEntry, closeAuditLog, currentCaller, record, stamp, withCaller } from "./audit.js";
 
 const VERSION = "0.7.0";
 
@@ -337,8 +337,42 @@ async function main() {
     // lastSeenAt tracks activity so the sweep below can close and drop a
     // session nothing ever sent a DELETE for, instead of holding it (and its
     // transport, and the timers/streams under it) until the process restarts.
-    type Session = { transport: StreamableHTTPServerTransport; lastSeenAt: number };
+    // `owner` is the `sub` of whoever initialized the session. Sessions are
+    // addressed by an ID the client sends back, and nothing about holding that
+    // ID proves you are the person it was issued to — so without this, any
+    // valid token could drive someone else's session. Attribution would still
+    // be right (it follows the token on each request, not the session), but a
+    // session ID would stop meaning "one person's run of calls", which is
+    // exactly what it is recorded for.
+    type Session = { transport: StreamableHTTPServerTransport; lastSeenAt: number; owner?: string };
     const sessions = new Map<string, Session>();
+
+    /**
+     * A session belongs to the identity that opened it. Answering 404 rather
+     * than 403 on a mismatch is deliberate: to the wrong caller the session
+     * does not exist, which is both the honest answer and the one that tells a
+     * spec-compliant client to open its own instead of retrying.
+     */
+    function ownedBy(session: Session, caller: Caller): boolean {
+      return session.owner === undefined || session.owner === caller.sub;
+    }
+
+    /**
+     * Records the refusal. Someone presenting a valid token for a session that
+     * is not theirs is the one thing here worth seeing in the log even though
+     * nothing was executed — a trail that shows only what succeeded cannot
+     * show an attempt.
+     */
+    function denySession(req: any, res: any, caller: Caller) {
+      record(buildEntry({
+        caller,
+        tool: typeof req.body?.method === "string" ? req.body.method : "-",
+        path: "", call: "",
+        outcome: "denied", durationMs: 0,
+        error: "session belongs to another identity",
+      }));
+      unknownSession(res);
+    }
 
     const SESSION_IDLE_TIMEOUT_MS = Number(process.env.MCP_SESSION_IDLE_TIMEOUT_MS) || 30 * 60 * 1000;
     const sweep = setInterval(() => {
@@ -402,12 +436,15 @@ async function main() {
       return withCaller(caller, async () => {
         const sid = req.headers["mcp-session-id"] as string | undefined;
         const existing = sid ? sessions.get(sid) : undefined;
-        if (existing) { touch(sid); await existing.transport.handleRequest(req, res, req.body); return; }
+        if (existing) {
+          if (!ownedBy(existing, caller)) { denySession(req, res, caller); return; }
+          touch(sid); await existing.transport.handleRequest(req, res, req.body); return;
+        }
         if (sid) { unknownSession(res); return; }
         if (!sid && isInitializeRequest(req.body)) {
           const t = new StreamableHTTPServerTransport({
             sessionIdGenerator: () => randomUUID(),
-            onsessioninitialized: (id) => { sessions.set(id, { transport: t, lastSeenAt: Date.now() }); },
+            onsessioninitialized: (id) => { sessions.set(id, { transport: t, lastSeenAt: Date.now(), owner: caller.sub }); },
           });
           t.onclose = () => { if (t.sessionId) sessions.delete(t.sessionId); };
           await buildServer().connect(t);
@@ -422,7 +459,9 @@ async function main() {
       return withCaller(caller, async () => {
         const sid = req.headers["mcp-session-id"] as string;
         const session = sessions.get(sid);
-        if (session) { touch(sid); await session.transport.handleRequest(req, res); } else unknownSession(res);
+        if (!session) { unknownSession(res); return; }
+        if (!ownedBy(session, caller)) { denySession(req, res, caller); return; }
+        touch(sid); await session.transport.handleRequest(req, res);
       });
     });
     app.delete("/mcp", async (req: any, res: any) => {
@@ -431,9 +470,20 @@ async function main() {
       return withCaller(caller, async () => {
         const sid = req.headers["mcp-session-id"] as string;
         const session = sessions.get(sid);
-        if (session) { await session.transport.handleRequest(req, res); } else unknownSession(res);
+        if (!session) { unknownSession(res); return; }
+        if (!ownedBy(session, caller)) { denySession(req, res, caller); return; }
+        await session.transport.handleRequest(req, res);
       });
     });
+    // A container stop must not truncate the audit file: `write()` buffers,
+    // and SIGTERM would otherwise kill the process with entries still queued.
+    for (const signal of ["SIGTERM", "SIGINT"] as const) {
+      process.once(signal, () => {
+        clearInterval(sweep);
+        closeAuditLog(() => process.exit(0));
+      });
+    }
+
     const port = Number(process.env.MCP_PORT) || 3000;
     app.listen(port, () => {
       console.error(`MCP HTTP server on http://localhost:${port}/mcp`);

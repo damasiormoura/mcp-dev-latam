@@ -150,7 +150,14 @@ export type AuditEntry = {
   /** Omie endpoint and method, so a log line stands on its own. */
   path: string;
   call: string;
-  outcome: "ok" | "invalid" | "error" | "demo";
+  /**
+   * "denied" is the odd one out: it is not a tool call at all, but a request
+   * refused by the transport before dispatch — currently, a valid token
+   * reaching for a session that belongs to someone else. Worth a line for the
+   * same reason the rejected calls are: an audit trail that only records what
+   * succeeded cannot show an attempt.
+   */
+  outcome: "ok" | "invalid" | "error" | "demo" | "denied";
   durationMs: number;
   /** Identifying/monetary fields of the request, or the whole thing under MCP_AUDIT_FULL_ARGS. */
   args?: unknown;
@@ -210,6 +217,32 @@ export function record(entry: AuditEntry): void {
   fileSink()?.write(`${line}\n`);
 }
 
+/**
+ * Flushes and closes the file sink, then calls back.
+ *
+ * `write()` buffers, and a container stop kills the process without draining
+ * it — so entries accepted in the last moments would be missing from the file
+ * an operator was told to treat as the record. (They still reached stderr,
+ * which is written first, but only stderr having them is the situation this
+ * avoids.) The timeout is there because shutdown must not hang on a sink that
+ * is wedged: a truncated tail beats a container that will not stop.
+ */
+export function closeAuditLog(done: () => void, timeoutMs = 2000): void {
+  if (!stream || streamFailed) return done();
+  let finished = false;
+  const once = () => {
+    if (finished) return;
+    finished = true;
+    done();
+  };
+  const timer = setTimeout(once, timeoutMs);
+  timer.unref?.();
+  stream.end(() => {
+    clearTimeout(timer);
+    once();
+  });
+}
+
 /** Builds the entry, keeping the summarize/full-args decision in one place. */
 export function buildEntry(fields: {
   caller: Caller | undefined;
@@ -258,13 +291,30 @@ export function buildEntry(fields: {
 const STAMP_ENABLED = process.env.MCP_AUDIT_STAMP !== "false";
 
 /**
+ * Folds a label to ASCII: accents are stripped to their base letter, anything
+ * left that is still outside printable ASCII is dropped.
+ *
+ * The identity comes from the IdP, so it is whatever the directory holds —
+ * `joão.silva`, a name in Cyrillic, an emoji someone put in a display name.
+ * The stamp claims to be ASCII because it can reach fiscal documents whose
+ * encoding path is not ours to assume, and a claim the code does not enforce
+ * is just a comment. Transliterating beats dropping: "joao.silva" still names
+ * the person, where stripping alone would give "jo.silva".
+ */
+function toAscii(text: string): string {
+  return text
+    .normalize("NFD")
+    .replace(/[̀-ͯ]/g, "")
+    .replace(/[^\x20-\x7E]/g, "");
+}
+
+/**
  * ASCII only, and bracketed. Bracketed so a human reading the note can see at
- * a glance which part is machine-appended, and ASCII because these strings can
- * reach fiscal documents where the encoding path is not ours to assume.
+ * a glance which part is machine-appended.
  */
 export function stampText(caller: Caller | undefined, now = new Date()): string {
   const ts = now.toISOString().slice(0, 16).replace("T", " ");
-  return `[via MCP: ${callerLabel(caller)} at ${ts}Z]`;
+  return `[via MCP: ${toAscii(callerLabel(caller))} at ${ts}Z]`;
 }
 
 /**
@@ -277,18 +327,29 @@ export function stampText(caller: Caller | undefined, now = new Date()): string 
 const STAMP_LENGTH_BUDGET = 500;
 
 /**
- * Where the free-text notes live for a given tool, and whether it is safe to
- * create the field when the caller did not send one.
+ * Where the free-text notes live for a given tool, and how far the stamp may
+ * go in creating what is not already there. Three modes, because "is it safe
+ * to write this field" has three genuinely different answers:
  *
- * The distinction is load-bearing. On a create there is no prior value, so
- * writing the field is additive. On an update Omie replaces what it is sent —
- * so stamping an update that omitted the field would blank whatever notes the
- * record already had, destroying data to record an audit trail. "if-present"
- * appends only to a value the caller was already going to overwrite.
+ * - "always" — create the enclosing block and the note. Correct only when the
+ *   block holds nothing but notes (`observacoes`, `Observacoes`) or is
+ *   required anyway, so conjuring it cannot change the meaning of the request.
+ *
+ * - "if-parent-present" — write the note, but never invent the block holding
+ *   it. For blocks that also carry business fields: `IncluirLancCC`'s
+ *   `detalhes` holds cCodCateg/cTipo/cNumDoc, so sending an otherwise-empty
+ *   `detalhes` turns "no detail block" into "a detail block with no category",
+ *   which is a different request. The stamp must not change a payload's shape
+ *   to record who sent it.
+ *
+ * - "if-present" — append only to a value the caller already supplied. This is
+ *   the rule for updates: Omie replaces the notes it is sent, so creating the
+ *   field on an Alterar or Upsert call would blank whatever the record already
+ *   had. Destroying existing data to record an audit note is worse than none.
  */
 export type NotesTarget = {
   path: string[];
-  when: "always" | "if-present";
+  when: "always" | "if-parent-present" | "if-present";
 };
 
 export function notes(when: NotesTarget["when"], ...path: string[]): NotesTarget {
@@ -318,7 +379,8 @@ export function stamp(
   for (const key of parents) {
     const child = node[key];
     if (child === undefined || child === null) {
-      if (target.when === "if-present") return { param, stamped: false };
+      // Only "always" may bring a block into existence.
+      if (target.when !== "always") return { param, stamped: false };
       node[key] = {};
     } else if (typeof child !== "object" || Array.isArray(child)) {
       return { param, stamped: false }; // not the shape we expected; leave it alone

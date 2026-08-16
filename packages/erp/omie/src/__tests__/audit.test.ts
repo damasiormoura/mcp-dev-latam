@@ -258,6 +258,53 @@ describe("attribution stamp", () => {
     expect(stamp(wrongLeaf, CREATE, RODRIGO, AT).stamped).toBe(false);
   });
 
+  it("folds a non-ASCII identity rather than writing it into a fiscal field", () => {
+    // The label comes from the IdP's directory, so it is whatever is stored
+    // there. The claim that the stamp is ASCII has to hold for those too.
+    const text = stampText({ email: "joão.conceição@exemplo.com.br" }, AT);
+
+    expect(text).toBe("[via MCP: joao.conceicao@exemplo.com.br at 2026-08-16 10:32Z]");
+    expect(/^[\x20-\x7E]*$/.test(text)).toBe(true);
+  });
+
+  it("drops characters that have no ASCII fold at all", () => {
+    const text = stampText({ username: "мария✨" }, AT);
+    expect(/^[\x20-\x7E]*$/.test(text)).toBe(true);
+    expect(text).toContain("[via MCP:");
+  });
+
+  describe("if-parent-present", () => {
+    // For a block that carries business fields of its own, conjuring it to
+    // hold a note would change the request Omie receives.
+    const TARGET = notes("if-parent-present", "detalhes", "cObs");
+
+    it("writes the note when the block is already there", () => {
+      const { param, stamped } = stamp(
+        { cCodIntLanc: "CC-1", detalhes: { cCodCateg: "2.04.01" } },
+        TARGET,
+        RODRIGO,
+        AT
+      );
+
+      expect(stamped).toBe(true);
+      expect((param as any).detalhes).toEqual({ cCodCateg: "2.04.01", cObs: stampText(RODRIGO, AT) });
+    });
+
+    it("does not invent the block when the caller omitted it", () => {
+      const original = { cCodIntLanc: "CC-1", cabecalho: { nCodCC: 1 } };
+      const { param, stamped } = stamp(original, TARGET, RODRIGO, AT);
+
+      expect(stamped).toBe(false);
+      expect(param).toBe(original);
+      expect(param).not.toHaveProperty("detalhes");
+    });
+
+    it("still appends to a note the caller wrote", () => {
+      const { param } = stamp({ detalhes: { cObs: "Taxa bancária" } }, TARGET, RODRIGO, AT);
+      expect((param as any).detalhes.cObs).toBe(`Taxa bancária ${stampText(RODRIGO, AT)}`);
+    });
+  });
+
   it("stamps a top-level notes field", () => {
     const { param, stamped } = stamp({ obs: "Ajuste inventário" }, notes("always", "obs"), RODRIGO, AT);
 
@@ -335,6 +382,28 @@ describe("declared notes paths resolve against the tool schema", () => {
         `${tool.name} (${tool.call}) must use if-present: creating the notes field on an ` +
           `update would replace whatever the record already had`
       ).toBe("if-present");
+    }
+  });
+
+  /**
+   * "always" is the only mode that can bring a block into existence, so it is
+   * only safe where doing so cannot change what the request means: either the
+   * block is required anyway, or it holds nothing besides the note.
+   */
+  it("only uses always where creating the enclosing block is harmless", () => {
+    const nested = withNotes.filter((t) => t.notes!.when === "always" && t.notes!.path.length > 1);
+
+    for (const tool of nested) {
+      const [block] = tool.notes!.path;
+      const schema = tool.inputSchema as any;
+      const required: string[] = schema.required ?? [];
+      const siblings = Object.keys(schema.properties[block].properties ?? {});
+
+      expect(
+        required.includes(block) || siblings.length === 1,
+        `${tool.name}: "${block}" is optional and carries ${siblings.join(", ")} — creating it ` +
+          `just to hold a note would send ${tool.call} a different request shape. Use if-parent-present.`
+      ).toBe(true);
     }
   });
 });

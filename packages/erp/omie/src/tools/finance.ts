@@ -307,7 +307,10 @@ export const financeTools: OmieTool[] = [
       },
       required: ["cCodIntLanc", "cabecalho"],
     },
-    notes: notes("always", "detalhes", "cObs"),
+    // if-parent-present, not always: `detalhes` is optional here and also
+    // carries cCodCateg/cTipo/cNumDoc, so creating it just to hold a note
+    // would send Omie a categoryless detail block instead of none at all.
+    notes: notes("if-parent-present", "detalhes", "cObs"),
   },
   {
     name: "list_cash_entries",

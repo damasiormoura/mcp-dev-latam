@@ -347,7 +347,15 @@ The server closes that gap from both ends.
 Every call is recorded, including the ones that never reached Omie — a rejected
 settlement attempt is as interesting as a successful one. `result` carries the
 identifiers Omie returned, which is what ties a log line to the actual ERP
-record.
+record. `outcome` is one of `ok`, `error` (Omie refused), `invalid` (this
+server refused), `demo`, or `denied` — the last being a request turned away by
+the transport before dispatch.
+
+Sessions belong to the identity that opened them: a session ID is just a value
+the client sends back, so without that check any valid token could drive
+someone else's session and one `sessionId` in the log could cover two people.
+A token reaching for a session it does not own gets a `404` and a `denied`
+entry — nothing runs, but the attempt is visible.
 
 Arguments are summarised down to identifying and monetary fields rather than
 logged whole, so a file that exists to answer "who did this" doesn't accumulate
@@ -371,13 +379,20 @@ ERP sees who put it there without leaving the ERP:
 Pedido urgente [via MCP: maria@example.com at 2026-08-16 10:31Z]
 ```
 
-Creates always get the stamp. **Updates only get it when the caller was already
-writing to that field** — Omie replaces the notes it is sent, so stamping an
-update that omitted them would erase whatever the record already had. Losing
-existing data to record an audit note is a worse outcome than no note, so the
-tools that call `Alterar*`/`Upsert*` never create the field. Set
-`MCP_AUDIT_STAMP=false` to leave ERP data untouched entirely; the log is
-unaffected.
+How far the stamp may go in creating what isn't already there depends on what
+it would be creating:
+
+| Case | Behaviour |
+|---|---|
+| Create, notes block holds only the note | Writes the block and the note |
+| Create, notes block also carries business fields (`IncluirLancCC`'s `detalhes`) | Writes the note only if the caller already sent that block — conjuring it would turn "no detail block" into "a detail block with no category", a different request |
+| Update (`Alterar*` / `Upsert*`) | Appends only to a value the caller already supplied |
+
+That last row is the one that matters most: Omie replaces the notes it is sent,
+so stamping an update that omitted them would erase whatever the record already
+had. Losing existing data to record an audit note is a worse outcome than no
+note. Set `MCP_AUDIT_STAMP=false` to leave ERP data untouched entirely; the log
+is unaffected.
 
 Neither half replaces the other: the log is complete but lives on this side of
 the API, and the stamp is visible in Omie but only exists where a notes field
