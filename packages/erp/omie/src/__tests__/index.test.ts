@@ -523,4 +523,107 @@ describe("mcp-omie", () => {
       );
     });
   });
+
+  /**
+   * End to end: from a verified caller in context, through dispatch, to what
+   * actually reaches Omie and what lands in the log. The unit tests in
+   * audit.test.ts pin the pieces; these pin that they are wired together —
+   * which is the part that was missing, since the server verified the token
+   * and then discarded it.
+   */
+  describe("caller attribution", () => {
+    const CALLER = { sub: "u-1", email: "heloisa@example.com", username: "heloisa", sessionId: "s-9" };
+
+    /** Reads back the AUDIT lines this server wrote to stderr. */
+    function auditLines(spy: ReturnType<typeof vi.spyOn>) {
+      return spy.mock.calls
+        .map((c) => String(c[0]))
+        .filter((line) => line.startsWith("AUDIT "))
+        .map((line) => JSON.parse(line.slice("AUDIT ".length)));
+    }
+
+    let stderr: ReturnType<typeof vi.spyOn>;
+    beforeEach(() => { stderr = vi.spyOn(console, "error").mockImplementation(() => {}); });
+    afterEach(() => { stderr.mockRestore(); });
+
+    it("writes the caller into the order sent to Omie, and into the log", async () => {
+      const { withCaller } = await import("../audit.js");
+      mockFetch.mockResolvedValueOnce({ ok: true, json: () => Promise.resolve({ codigo_pedido: 12345 }) });
+
+      await withCaller(CALLER, () =>
+        callToolHandler({ params: { name: "create_order", arguments: MIN_ARGS.create_order } })
+      );
+
+      const body = JSON.parse(mockFetch.mock.calls[0][1].body);
+      expect(body.param[0].observacoes.obs_venda).toContain("via MCP: heloisa@example.com");
+
+      const [entry] = auditLines(stderr);
+      expect(entry).toMatchObject({
+        tool: "create_order",
+        call: "IncluirPedido",
+        outcome: "ok",
+        actor: "heloisa@example.com",
+        stamped: true,
+        caller: { sub: "u-1", sessionId: "s-9" },
+      });
+      // The response ID is what ties this line to the order in the ERP.
+      expect(entry.result).toMatchObject({ codigo_pedido: 12345 });
+    });
+
+    it("logs a failed call against the caller too", async () => {
+      const { withCaller } = await import("../audit.js");
+      mockFetch.mockResolvedValueOnce({
+        ok: false, status: 500,
+        text: () => Promise.resolve(JSON.stringify({ faultstring: "Cliente nao encontrado", faultcode: "SOAP-ENV:Client-101" })),
+      });
+
+      await withCaller(CALLER, () =>
+        callToolHandler({ params: { name: "create_order", arguments: MIN_ARGS.create_order } })
+      );
+
+      expect(auditLines(stderr)[0]).toMatchObject({
+        outcome: "error",
+        actor: "heloisa@example.com",
+        tool: "create_order",
+      });
+      expect(auditLines(stderr)[0].error).toContain("Cliente nao encontrado");
+    });
+
+    it("logs a call rejected before it ever reached Omie", async () => {
+      const { withCaller } = await import("../audit.js");
+
+      await withCaller(CALLER, () =>
+        callToolHandler({ params: { name: "pay_account_payable", arguments: { valor: 1, data: "01/01/2027", codigo_conta_corrente: 3 } } })
+      );
+
+      expect(mockFetch).not.toHaveBeenCalled();
+      expect(auditLines(stderr)[0]).toMatchObject({
+        tool: "pay_account_payable",
+        outcome: "invalid",
+        actor: "heloisa@example.com",
+      });
+    });
+
+    it("does not stamp an update that was not already rewriting the notes", async () => {
+      const { withCaller } = await import("../audit.js");
+      mockFetch.mockResolvedValueOnce({ ok: true, json: () => Promise.resolve({}) });
+
+      await withCaller(CALLER, () =>
+        callToolHandler({ params: { name: "update_sales_order", arguments: { cabecalho: { codigo_pedido: 1 } } } })
+      );
+
+      const body = JSON.parse(mockFetch.mock.calls[0][1].body);
+      expect(body.param[0]).not.toHaveProperty("observacoes");
+      expect(auditLines(stderr)[0]).toMatchObject({ tool: "update_sales_order", stamped: false });
+    });
+
+    it("still runs, unstamped, with no caller — the stdio case", async () => {
+      mockFetch.mockResolvedValueOnce({ ok: true, json: () => Promise.resolve({}) });
+      await callToolHandler({ params: { name: "create_order", arguments: MIN_ARGS.create_order } });
+
+      const body = JSON.parse(mockFetch.mock.calls[0][1].body);
+      expect(body.param[0]).not.toHaveProperty("observacoes");
+      expect(auditLines(stderr)[0]).toMatchObject({ actor: "unauthenticated", stamped: false });
+    });
+  });
 });

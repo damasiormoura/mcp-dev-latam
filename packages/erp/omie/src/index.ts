@@ -27,6 +27,11 @@
  *   MCP_AUTH_RESOURCE — this server's canonical URL, required in the token `aud`
  *   MCP_INSECURE_HTTP — set to "true" to allow starting HTTP with no auth
  *   MCP_SESSION_IDLE_TIMEOUT_MS — idle session eviction (default 1800000 / 30 min)
+ *
+ * Audit trail (see ./audit.ts):
+ *   MCP_AUDIT_LOG — file to append JSONL entries to, in addition to stderr
+ *   MCP_AUDIT_FULL_ARGS — "true" logs full arguments rather than a summary
+ *   MCP_AUDIT_STAMP — "false" stops writing caller attribution into Omie notes
  */
 
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
@@ -40,8 +45,9 @@ import {
 
 import { omieRequest, validateArgs, CREDENTIALS_CONFIGURED } from "./omie.js";
 import { TOOLS, findTool } from "./tools/index.js";
+import { type Caller, buildEntry, currentCaller, record, stamp, withCaller } from "./audit.js";
 
-const VERSION = "0.6.1";
+const VERSION = "0.7.0";
 
 const DEMO_MODE = process.argv.includes("--demo") || process.env.MCP_DEMO === "true";
 
@@ -158,30 +164,62 @@ function buildServer(): Server {
     const { name, arguments: rawArgs } = request.params;
     const args = (rawArgs as Record<string, unknown> | undefined) ?? {};
 
+    // Who is calling, and since when. Read once at the top: every exit path
+    // below records an entry, including the ones that never reach Omie — a
+    // rejected settlement attempt is exactly as interesting as a successful
+    // one when the question is who tried to do what.
+    const caller = currentCaller();
+    const startedAt = Date.now();
+    const since = () => Date.now() - startedAt;
+
     const tool = findTool(name);
     if (!tool) {
+      record(buildEntry({
+        caller, tool: name, path: "", call: "",
+        outcome: "invalid", durationMs: since(), error: "unknown tool",
+      }));
       return { content: [{ type: "text", text: `Unknown tool: ${name}` }], isError: true };
     }
 
     const problems = validateArgs(tool.inputSchema, args);
     if (problems.length > 0) {
+      record(buildEntry({
+        caller, tool: name, path: tool.path, call: tool.call,
+        outcome: "invalid", durationMs: since(), args, error: problems.join("; "),
+      }));
       return {
         content: [{ type: "text", text: `Invalid arguments for ${name}:\n- ${problems.join("\n- ")}` }],
         isError: true,
       };
     }
 
-    const param = tool.param ? tool.param(args) : args;
+    // Attribution goes in after validation, so a stamp can never be the reason
+    // a call fails its own schema check, and after the param builder, so it
+    // lands on the object actually sent.
+    const { param, stamped } = stamp(tool.param ? tool.param(args) : args, tool.notes, caller);
 
     if (DEMO_MODE) {
+      record(buildEntry({
+        caller, tool: name, path: tool.path, call: tool.call,
+        outcome: "demo", durationMs: since(), args, stamped,
+      }));
       return { content: [{ type: "text", text: JSON.stringify(DEMO_RESPONSES[name] ?? demoFallback(name, param), null, 2) }] };
     }
 
     try {
       const result = await omieRequest(tool.path, tool.call, [param]);
+      record(buildEntry({
+        caller, tool: name, path: tool.path, call: tool.call,
+        outcome: "ok", durationMs: since(), args, result, stamped,
+      }));
       return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
     } catch (err) {
-      return { content: [{ type: "text", text: `Error: ${err instanceof Error ? err.message : String(err)}` }], isError: true };
+      const message = err instanceof Error ? err.message : String(err);
+      record(buildEntry({
+        caller, tool: name, path: tool.path, call: tool.call,
+        outcome: "error", durationMs: since(), args, error: message, stamped,
+      }));
+      return { content: [{ type: "text", text: `Error: ${message}` }], isError: true };
     }
   });
 
@@ -250,22 +288,43 @@ async function main() {
       });
     }
 
-    async function requireAuth(req: any, res: any): Promise<boolean> {
-      if (!AUTH_ENABLED) return true;
+    /**
+     * Verifies the request and returns who made it, or null if it was rejected
+     * (in which case the 401 has already been written).
+     *
+     * The token was always verified; what is new is keeping the payload. Each
+     * person connecting through the connector authenticates individually at the
+     * IdP, so `sub`/`email` name a human — the only point in the whole path
+     * where that is true, since everything downstream shares one Omie App Key.
+     * Discarding it here was what made the ERP unable to say who did anything.
+     */
+    async function requireAuth(req: any, res: any): Promise<Caller | null> {
+      const sessionId = req.headers["mcp-session-id"] as string | undefined;
+      // No enforcement configured: still return a context so the session ID is
+      // logged, but with no identity — `identified()` stays false, and nothing
+      // gets stamped into Omie under a name nobody verified.
+      if (!AUTH_ENABLED) return { sessionId };
+
       const header = req.headers.authorization;
       if (typeof header !== "string" || !header.startsWith("Bearer ")) {
         unauthorized(res);
-        return false;
+        return null;
       }
       try {
-        await jwtVerify(header.slice(7), await getJwks(), {
+        const { payload } = await jwtVerify(header.slice(7), await getJwks(), {
           issuer: AUTH_ISSUER,
           audience: AUTH_RESOURCE,
         });
-        return true;
+        const str = (v: unknown) => (typeof v === "string" && v ? v : undefined);
+        return {
+          sub: str(payload.sub),
+          email: str((payload as Record<string, unknown>).email),
+          username: str((payload as Record<string, unknown>).preferred_username),
+          sessionId,
+        };
       } catch (err) {
         unauthorized(res, err instanceof Error ? err.message : "Invalid token");
-        return false;
+        return null;
       }
     }
 
@@ -332,34 +391,48 @@ async function main() {
       });
     }
 
+    // The SDK owns the path from here to the tool handler and has no slot for
+    // application context, so the caller travels through AsyncLocalStorage
+    // rather than as an argument. Identity is bound per request, not per
+    // session: sessions outlive individual calls, and the token on *this*
+    // request is the only trustworthy statement of who is making it.
     app.post("/mcp", async (req: any, res: any) => {
-      if (!(await requireAuth(req, res))) return;
-      const sid = req.headers["mcp-session-id"] as string | undefined;
-      const existing = sid ? sessions.get(sid) : undefined;
-      if (existing) { touch(sid); await existing.transport.handleRequest(req, res, req.body); return; }
-      if (sid) { unknownSession(res); return; }
-      if (!sid && isInitializeRequest(req.body)) {
-        const t = new StreamableHTTPServerTransport({
-          sessionIdGenerator: () => randomUUID(),
-          onsessioninitialized: (id) => { sessions.set(id, { transport: t, lastSeenAt: Date.now() }); },
-        });
-        t.onclose = () => { if (t.sessionId) sessions.delete(t.sessionId); };
-        await buildServer().connect(t);
-        await t.handleRequest(req, res, req.body); return;
-      }
-      res.status(400).json({ jsonrpc: "2.0", error: { code: -32000, message: "Bad Request" }, id: null });
+      const caller = await requireAuth(req, res);
+      if (!caller) return;
+      return withCaller(caller, async () => {
+        const sid = req.headers["mcp-session-id"] as string | undefined;
+        const existing = sid ? sessions.get(sid) : undefined;
+        if (existing) { touch(sid); await existing.transport.handleRequest(req, res, req.body); return; }
+        if (sid) { unknownSession(res); return; }
+        if (!sid && isInitializeRequest(req.body)) {
+          const t = new StreamableHTTPServerTransport({
+            sessionIdGenerator: () => randomUUID(),
+            onsessioninitialized: (id) => { sessions.set(id, { transport: t, lastSeenAt: Date.now() }); },
+          });
+          t.onclose = () => { if (t.sessionId) sessions.delete(t.sessionId); };
+          await buildServer().connect(t);
+          await t.handleRequest(req, res, req.body); return;
+        }
+        res.status(400).json({ jsonrpc: "2.0", error: { code: -32000, message: "Bad Request" }, id: null });
+      });
     });
     app.get("/mcp", async (req: any, res: any) => {
-      if (!(await requireAuth(req, res))) return;
-      const sid = req.headers["mcp-session-id"] as string;
-      const session = sessions.get(sid);
-      if (session) { touch(sid); await session.transport.handleRequest(req, res); } else unknownSession(res);
+      const caller = await requireAuth(req, res);
+      if (!caller) return;
+      return withCaller(caller, async () => {
+        const sid = req.headers["mcp-session-id"] as string;
+        const session = sessions.get(sid);
+        if (session) { touch(sid); await session.transport.handleRequest(req, res); } else unknownSession(res);
+      });
     });
     app.delete("/mcp", async (req: any, res: any) => {
-      if (!(await requireAuth(req, res))) return;
-      const sid = req.headers["mcp-session-id"] as string;
-      const session = sessions.get(sid);
-      if (session) { await session.transport.handleRequest(req, res); } else unknownSession(res);
+      const caller = await requireAuth(req, res);
+      if (!caller) return;
+      return withCaller(caller, async () => {
+        const sid = req.headers["mcp-session-id"] as string;
+        const session = sessions.get(sid);
+        if (session) { await session.transport.handleRequest(req, res); } else unknownSession(res);
+      });
     });
     const port = Number(process.env.MCP_PORT) || 3000;
     app.listen(port, () => {
