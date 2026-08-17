@@ -142,6 +142,49 @@ describe("audit entries", () => {
     expect(entry.result).toEqual({ codigo_cliente: 1001 });
   });
 
+  it("does not treat a customer's PIX key as a record identifier", () => {
+    // Caught live: list_customers' real response carries dadosBancarios with a
+    // cChavePix field. A PIX key can itself be a CPF, CNPJ, email or phone
+    // number — exactly the class of personal data cnpj_cpf is already excluded
+    // for above. `result` is Omie's actual response shape, not ours, so a
+    // prefix match here (cChave* instead of the one real field, cChaveNFe)
+    // would have pulled it straight into the log.
+    const entry = buildEntry({
+      caller: RODRIGO,
+      tool: "list_customers",
+      path: "/geral/clientes/",
+      call: "ListarClientes",
+      outcome: "ok",
+      durationMs: 1231,
+      result: {
+        clientes_cadastro: [{
+          codigo_cliente_omie: 5950743517,
+          dadosBancarios: { cChavePix: "12345678900", codigo_banco: "001" },
+        }],
+      },
+    });
+
+    expect(JSON.stringify(entry.result)).not.toContain("12345678900");
+    expect(entry.result).toEqual({
+      "clientes_cadastro.0.codigo_cliente_omie": 5950743517,
+      "clientes_cadastro.0.dadosBancarios.codigo_banco": "001",
+    });
+  });
+
+  it("still treats the one real cChave field — an NF-e access key — as an identifier", () => {
+    const entry = buildEntry({
+      caller: RODRIGO,
+      tool: "create_invoice",
+      path: "/produtos/nfconsultar/",
+      call: "ConsultarNF",
+      outcome: "ok",
+      durationMs: 5,
+      args: { cChaveNFe: "35260812345678000190550010000000011234567890" },
+    });
+
+    expect(entry.args).toEqual({ cChaveNFe: "35260812345678000190550010000000011234567890" });
+  });
+
   it("records the Omie IDs a write returned, which is the link to the ERP record", () => {
     const entry = buildEntry({
       caller: RODRIGO,

@@ -520,6 +520,16 @@ on `SIGHUP`, so `logrotate` can rotate it without losing entries or leaving the
 process writing into a renamed file — see
 [Rotating the audit file](./SELF-HOSTING.md#rotating-the-audit-file).
 
+Caught live, on first real production traffic after that deploy: the
+identifying-field summary matched `cChave*` as a prefix, intending only
+`cChaveNFe` (an NF-e access key). `list_customers`' actual response carries
+`dadosBancarios.cChavePix` — a customer's PIX key, which can itself be a CPF,
+CNPJ, email or phone number depending on what the customer registered. `args`
+is shaped by this server's own schemas, but `result` is whatever Omie's
+response actually contains, so a prefix match there risks pulling personal
+data into the log the same way `cnpj_cpf` was already excluded for. Now
+matched by exact name.
+
 ### Next
 - Per-user Omie App Keys, so Omie's own change history attributes to a person
   rather than to the integration app (depends on the Omie plan allowing more
