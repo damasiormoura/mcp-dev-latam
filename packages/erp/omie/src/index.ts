@@ -29,7 +29,8 @@
  *   MCP_SESSION_IDLE_TIMEOUT_MS — idle session eviction (default 1800000 / 30 min)
  *
  * Audit trail (see ./audit.ts):
- *   MCP_AUDIT_LOG — file to append JSONL entries to, in addition to stderr
+ *   MCP_AUDIT_LOG — file to append JSONL entries to, in addition to stderr.
+ *                   Reopened on SIGHUP, so logrotate can rotate it in place.
  *   MCP_AUDIT_FULL_ARGS — "true" logs full arguments rather than a summary
  *   MCP_AUDIT_STAMP — "false" stops writing caller attribution into Omie notes
  */
@@ -45,9 +46,9 @@ import {
 
 import { omieRequest, validateArgs, CREDENTIALS_CONFIGURED } from "./omie.js";
 import { TOOLS, findTool } from "./tools/index.js";
-import { type Caller, buildEntry, closeAuditLog, currentCaller, record, stamp, withCaller } from "./audit.js";
+import { type Caller, buildEntry, closeAuditLog, currentCaller, record, reopenAuditLog, stamp, withCaller } from "./audit.js";
 
-const VERSION = "0.7.0";
+const VERSION = "0.7.1";
 
 const DEMO_MODE = process.argv.includes("--demo") || process.env.MCP_DEMO === "true";
 
@@ -483,6 +484,15 @@ async function main() {
         closeAuditLog(() => process.exit(0));
       });
     }
+
+    // SIGHUP is what logrotate's postrotate hook sends: the file it just
+    // renamed has to be reopened at the same path, or every entry after
+    // rotation goes only to stderr. `on`, not `once` — rotation recurs for the
+    // life of the process, unlike the shutdown signals above.
+    process.on("SIGHUP", () => {
+      reopenAuditLog();
+      console.error("Audit log reopened (SIGHUP) for log rotation.");
+    });
 
     const port = Number(process.env.MCP_PORT) || 3000;
     app.listen(port, () => {

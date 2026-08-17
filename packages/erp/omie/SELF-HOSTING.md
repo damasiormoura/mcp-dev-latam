@@ -232,13 +232,55 @@ server that starts, serves, and logs nothing to the file — it says so once on
 stderr and falls back there, which is easy to miss if nobody is watching the
 logs at that moment. `chown` the directory to the runtime UID when mounting it.
 
-Two more consequences worth planning for rather than discovering:
+One more consequence worth planning for rather than discovering:
 
-- **The file grows without bound.** Nothing rotates it. Hand it to logrotate,
-  or ship it somewhere that ages data out on purpose.
 - **It is evidence about people.** It names who did what and when, so it
   deserves the access controls and retention rules that implies — not
   world-readable next to the application it audits.
+
+### Rotating the audit file
+
+The server reopens `MCP_AUDIT_LOG` on `SIGHUP` — the same convention nginx,
+rsyslog and most long-running Unix daemons use, so `logrotate`'s `postrotate`
+hook can drive it directly. Point it at the container:
+
+```
+# /etc/logrotate.d/mcp-omie
+/var/log/mcp-omie/audit.jsonl {
+    daily
+    rotate 90
+    compress
+    delaycompress
+    missingok
+    notifempty
+    nocreate
+    postrotate
+        docker kill --signal=HUP mcp-omie >/dev/null 2>&1 || true
+    endscript
+}
+```
+
+`rotate 90` on a `daily` schedule keeps roughly a quarter's worth of history —
+one rotated file per day, oldest dropped once there are 90 — plus whatever the
+current day's active file holds. Adjust the number, not the unit, if the
+retention period changes; keeping the cadence daily is what keeps a single
+day's worth of activity in each rotated file, which is what makes "how many
+files" and "how many days" the same number.
+
+**Use `nocreate`, not `create`.** logrotate's `create` directive pre-creates
+the empty file as a host user/group before the signal is even sent — and the
+container writes as its own non-root `mcp` user, whose UID on the host is
+whatever Alpine's `adduser` picked, not a host account that happens to share
+the name. Matching that by hand across every rotation is exactly the
+ownership mismatch the "writable by the container's non-root user" note above
+already warns about. `nocreate` sidesteps it: the server's own next write
+recreates the file itself, under the UID that already works.
+
+Verify a rotation actually took effect by tailing `docker logs` right after —
+the server logs `Audit log reopened (SIGHUP) for log rotation.` on every one.
+Silence there, with the file not growing, means the signal didn't reach the
+process (check the container name in the `postrotate` line matches what
+`deploy.sh` names it).
 
 ### Attribution stops at the App Key
 

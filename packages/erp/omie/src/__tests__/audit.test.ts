@@ -1,4 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, renameSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { TOOLS } from "../tools/index.js";
 import {
   type Caller,
@@ -337,6 +340,80 @@ describe("MCP_AUDIT_STAMP=false", () => {
       call: "IncluirPedido", outcome: "ok", durationMs: 1,
     });
     expect(entry.actor).toBe("rodrigo@example.com");
+  });
+});
+
+/**
+ * Rotation, against a real file. `logrotate` renames the current file out from
+ * under the process's open descriptor and expects a signal handler to reopen
+ * at the same path — this reproduces exactly that sequence, without a signal
+ * or a subprocess, so it can assert on the two files directly.
+ */
+describe("log rotation (reopenAuditLog)", () => {
+  const dir = mkdtempSync(join(tmpdir(), "mcp-omie-audit-"));
+  const logPath = join(dir, "audit.jsonl");
+  const originalEnv = process.env.MCP_AUDIT_LOG;
+
+  beforeEach(() => {
+    vi.resetModules();
+    process.env.MCP_AUDIT_LOG = logPath;
+  });
+  afterEach(() => {
+    if (originalEnv === undefined) delete process.env.MCP_AUDIT_LOG;
+    else process.env.MCP_AUDIT_LOG = originalEnv;
+  });
+
+  const entry = (n: number) =>
+    buildEntry({ caller: RODRIGO, tool: `tool-${n}`, path: "/x/", call: "X", outcome: "ok", durationMs: 0 });
+
+  it("writes new entries to a freshly created file after the old one is renamed away", async () => {
+    const fresh = await import("../audit.js");
+
+    fresh.record(entry(1));
+    await new Promise((r) => setTimeout(r, 20));
+    expect(readFileSync(logPath, "utf8").trim().split("\n")).toHaveLength(1);
+
+    // The rotation itself: rename the live file out from under the open fd,
+    // exactly what logrotate's `postrotate` step follows with a signal for.
+    const rotated = `${logPath}.1`;
+    renameSync(logPath, rotated);
+
+    fresh.reopenAuditLog();
+    await new Promise((r) => setTimeout(r, 20));
+    fresh.record(entry(2));
+    await new Promise((r) => setTimeout(r, 20));
+
+    // Without the reopen, this second entry would land in the renamed file
+    // (the fd would still point at it) and the configured path would stay
+    // empty until the next restart — which is the whole failure this exists
+    // to prevent.
+    expect(readFileSync(logPath, "utf8").trim().split("\n")).toHaveLength(1);
+    expect(JSON.parse(readFileSync(logPath, "utf8").trim())).toMatchObject({ tool: "tool-2" });
+    expect(JSON.parse(readFileSync(rotated, "utf8").trim())).toMatchObject({ tool: "tool-1" });
+  });
+
+  it("gives a previously failed sink another chance at the same path", async () => {
+    // The path's parent directory does not exist yet — the same failure class
+    // as a volume that is briefly unmounted or full: the configured path is
+    // momentarily unwritable through no fault of the application.
+    const missingParent = join(dir, "not-yet-mounted", "audit.jsonl");
+    process.env.MCP_AUDIT_LOG = missingParent;
+    const fresh = await import("../audit.js");
+
+    fresh.record(entry(1));
+    await new Promise((r) => setTimeout(r, 20));
+    expect(existsSync(missingParent)).toBe(false);
+
+    // The underlying problem resolves — the directory shows up — and SIGHUP
+    // gives the sink another chance without a container restart. `streamFailed`
+    // must not be sticky for the life of the process once that happens.
+    mkdirSync(join(dir, "not-yet-mounted"));
+    fresh.reopenAuditLog();
+    fresh.record(entry(2));
+    await new Promise((r) => setTimeout(r, 20));
+
+    expect(existsSync(missingParent)).toBe(true);
+    expect(JSON.parse(readFileSync(missingParent, "utf8").trim())).toMatchObject({ tool: "tool-2" });
   });
 });
 

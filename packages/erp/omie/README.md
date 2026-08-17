@@ -371,6 +371,13 @@ docker run -d --name mcp-omie \
   … mcp-omie
 ```
 
+That file grows without bound on its own — the server reopens it on `SIGHUP`
+(the same convention nginx and most Unix daemons use), so a standard
+`logrotate` config with a `postrotate` hook sending `docker kill --signal=HUP
+mcp-omie` rotates it in place with nothing lost. See
+[SELF-HOSTING.md](./SELF-HOSTING.md#rotating-the-audit-file) for the config
+and why it uses `nocreate` rather than `create`.
+
 **2. Attribution inside Omie.** For write tools that have a free-text notes
 field, the caller is appended to it, so someone looking at the record in the
 ERP sees who put it there without leaving the ERP:
@@ -431,7 +438,7 @@ Omie provides a sandbox via app registration. Create an app to get test credenti
 | `MCP_DEMO` | No | `true` (or `--demo`) returns canned responses without calling Omie |
 | `OMIE_REQUEST_TIMEOUT_MS` | No | Per-request timeout to Omie, in ms (default `20000`) |
 | `MCP_SESSION_IDLE_TIMEOUT_MS` | HTTP only | Idle HTTP session eviction, in ms (default `1800000` / 30 min) |
-| `MCP_AUDIT_LOG` | No | File to append JSONL audit entries to, in addition to stderr. Use a mounted volume — stderr does not survive `docker rm` |
+| `MCP_AUDIT_LOG` | No | File to append JSONL audit entries to, in addition to stderr. Use a mounted volume — stderr does not survive `docker rm`. Reopened on `SIGHUP` for logrotate |
 | `MCP_AUDIT_FULL_ARGS` | No | `true` logs whole argument objects instead of the identifying/monetary summary |
 | `MCP_AUDIT_STAMP` | No | `false` stops appending caller attribution to Omie notes fields |
 
@@ -503,6 +510,15 @@ write tools append that person to the record's notes field inside Omie. Closes
 the gap left by one shared App Key, which made every change look like the
 integration app regardless of who asked for it. See
 [Audit trail](#audit-trail--who-executed-what) above.
+
+A follow-up review of that change caught four defects, all fixed in the same
+release: a session was addressable by any valid token, not just the identity
+that opened it; one nested notes target could change a request's shape rather
+than just its text; the ASCII claim on the stamp was unenforced; and buffered
+audit entries could be lost to `docker stop`. The audit file also now reopens
+on `SIGHUP`, so `logrotate` can rotate it without losing entries or leaving the
+process writing into a renamed file — see
+[Rotating the audit file](./SELF-HOSTING.md#rotating-the-audit-file).
 
 ### Next
 - Per-user Omie App Keys, so Omie's own change history attributes to a person
