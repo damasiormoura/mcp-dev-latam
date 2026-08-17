@@ -248,7 +248,7 @@ hook can drive it directly. Point it at the container:
 # /etc/logrotate.d/mcp-omie
 /var/log/mcp-omie/audit.jsonl {
     daily
-    rotate 14
+    rotate 90
     compress
     delaycompress
     missingok
@@ -260,6 +260,13 @@ hook can drive it directly. Point it at the container:
 }
 ```
 
+`rotate 90` on a `daily` schedule keeps roughly a quarter's worth of history —
+one rotated file per day, oldest dropped once there are 90 — plus whatever the
+current day's active file holds. Adjust the number, not the unit, if the
+retention period changes; keeping the cadence daily is what keeps a single
+day's worth of activity in each rotated file, which is what makes "how many
+files" and "how many days" the same number.
+
 **Use `nocreate`, not `create`.** logrotate's `create` directive pre-creates
 the empty file as a host user/group before the signal is even sent — and the
 container writes as its own non-root `mcp` user, whose UID on the host is
@@ -268,10 +275,6 @@ the name. Matching that by hand across every rotation is exactly the
 ownership mismatch the "writable by the container's non-root user" note above
 already warns about. `nocreate` sidesteps it: the server's own next write
 recreates the file itself, under the UID that already works.
-
-The interval and retention above (daily, keep 14) are a starting point, not a
-recommendation tied to anything about this server — set them to whatever your
-audit retention policy actually requires.
 
 Verify a rotation actually took effect by tailing `docker logs` right after —
 the server logs `Audit log reopened (SIGHUP) for log rotation.` on every one.
