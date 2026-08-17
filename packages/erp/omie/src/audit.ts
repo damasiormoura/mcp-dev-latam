@@ -95,8 +95,17 @@ export function identified(caller: Caller | undefined): caller is Caller {
  * out means the trail can name who acted without accumulating the registration
  * data of everyone they acted on. MCP_AUDIT_FULL_ARGS overrides this for
  * operators who decide otherwise.
+ *
+ * `cChaveNFe` is matched by exact name, not as a `cChave*` prefix like its
+ * neighbours — caught live in production: a `list_customers` result carries
+ * `dadosBancarios.cChavePix`, which is not a record identifier but the
+ * customer's PIX key, and a PIX key can itself *be* a CPF, CNPJ, email or
+ * phone number depending on which type the customer registered. `args` is
+ * shaped by our own schemas, but `result` is whatever Omie's response
+ * actually contains — a prefix match there risks pulling personal data into
+ * the log the same way `cnpj_cpf` was excluded above for.
  */
-const IDENTIFYING = /^(codigo_|numero_|id_|nCod|cCod|nId|cNum|nNum|nNF|cChave|etapa|cEtapa|tipo|cTipo)/;
+const IDENTIFYING = /^(codigo_|numero_|id_|nCod|cCod|nId|cNum|nNum|nNF|etapa|cEtapa|tipo|cTipo)|^cChaveNFe$/;
 /** Amounts and quantities — the fields that make a financial entry meaningful. */
 const MONETARY = /^(valor|nValor|nVal|vValor|quantidade|nQtde|quan|juros|desconto|multa)/i;
 
