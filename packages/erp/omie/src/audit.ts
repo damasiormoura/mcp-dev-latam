@@ -243,6 +243,30 @@ export function closeAuditLog(done: () => void, timeoutMs = 2000): void {
   });
 }
 
+/**
+ * Reopens the file sink at the same path — what a long-running process must do
+ * after `logrotate` renames the file out from under an open file descriptor.
+ * Without this, the process keeps appending to the now-renamed file forever;
+ * the path the operator configured in logrotate stays empty until the next
+ * restart, silently, which defeats the point of automating rotation.
+ *
+ * There is deliberately no `create` step here: the next write (via
+ * `fileSink()`) recreates the file itself, as the container's own user, which
+ * sidesteps the host/container UID mismatch a logrotate-created file would
+ * hit (see SELF-HOSTING.md). logrotate's own config should use `nocreate` for
+ * the same reason.
+ *
+ * Clearing `streamFailed` also means a sink that previously failed — the
+ * volume was briefly full or unmounted — gets another chance without a full
+ * container restart, since SIGHUP is cheap to send speculatively.
+ */
+export function reopenAuditLog(): void {
+  const old = stream;
+  stream = undefined;
+  streamFailed = false;
+  old?.end();
+}
+
 /** Builds the entry, keeping the summarize/full-args decision in one place. */
 export function buildEntry(fields: {
   caller: Caller | undefined;
