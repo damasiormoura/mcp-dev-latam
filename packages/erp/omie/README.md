@@ -285,9 +285,19 @@ holds the Omie credentials, rather than running on each user's machine.
 
 ```bash
 docker build -t mcp-omie packages/erp/omie
-docker run -d --name mcp-omie --restart unless-stopped \
+docker run -d --name mcp-omie --restart always \
   -p 3000:3000 --env-file .env mcp-omie
 ```
+
+> **`always`, not `unless-stopped`.** The two differ only in how they treat a
+> container whose stored state carries `HasBeenManuallyStopped`: `unless-stopped`
+> honours that flag and leaves the container down when the daemon next starts,
+> which includes after a host reboot. For a server that is expected to be
+> reachable unattended, that is a silent outage — and if something in front of it
+> (a tunnel, a proxy) stays up, callers get a 502 rather than an obvious failure.
+> `always` restarts on daemon start regardless. Recreating the container with a
+> deploy script resets the policy, so change it there too, not just on the
+> running container.
 
 | Endpoint | Auth | Purpose |
 |---|---|---|
