@@ -51,6 +51,15 @@ Add to `.cursor/mcp.json` or `.vscode/mcp.json`:
 }
 ```
 
+## The data is live, and the server says so
+
+Since 2026-09-21 the server returns `instructions` on `initialize` telling the
+agent that every result is a snapshot and to call again before stating the
+current state (an open title, an order's stage, a stock position), and that
+write tools change a production ERP. Every object result carries `read_at`;
+every `list_*` / `get_*` description repeats the clause, because not every MCP
+client injects server instructions.
+
 ## Tools (82)
 
 > Conformance status of each tool against the official Omie API reference:

@@ -146,6 +146,17 @@ describe("mcp-omie", () => {
     expect(listed.map((t: any) => t.name).sort()).toEqual(tools.map((t) => t.name).sort());
   });
 
+  it("tells the agent the data is live: instructions on initialize, read_at on results, the clause on read tools", async () => {
+    const { INSTRUCTIONS, TOOLS: all } = await import("../tools/index.js");
+    expect(INSTRUCTIONS).toMatch(/snapshot/);
+    expect(INSTRUCTIONS).toMatch(/call the tool AGAIN/);
+    expect(INSTRUCTIONS).toMatch(/confirm with the person/);
+    for (const t of all) {
+      const isRead = /^(list_|get_)/.test(t.name);
+      expect(/read_at/.test(t.description), `${t.name}`).toBe(isRead);
+    }
+  });
+
   it("exposes only name/description/inputSchema over the wire", async () => {
     const { tools: listed } = await listToolsHandler();
 
@@ -365,7 +376,10 @@ describe("mcp-omie", () => {
       const result = await callToolHandler({ params: { name: "list_customers", arguments: {} } });
 
       expect(mockFetch).not.toHaveBeenCalled();
-      expect(JSON.parse(result.content[0].text)).toHaveProperty("clientes_cadastro");
+      const body = JSON.parse(result.content[0].text);
+      expect(body).toHaveProperty("clientes_cadastro");
+      // Even the curated demo answer is stamped: the agent must see the snapshot time.
+      expect(body.read_at).toMatch(/^\d{4}-\d{2}-\d{2}T/);
     });
 
     it("still runs schema validation before returning a response", async () => {

@@ -45,7 +45,7 @@ import {
 } from "@modelcontextprotocol/sdk/types.js";
 
 import { omieRequest, validateArgs, CREDENTIALS_CONFIGURED } from "./omie.js";
-import { TOOLS, findTool } from "./tools/index.js";
+import { TOOLS, findTool, INSTRUCTIONS } from "./tools/index.js";
 import { type Caller, buildEntry, closeAuditLog, currentCaller, record, reopenAuditLog, stamp, withCaller } from "./audit.js";
 
 const VERSION = "0.7.2";
@@ -146,7 +146,9 @@ function metadataUrl(): string {
 // pointing at CodeSpar's own hosted service and credential vault. Removed in
 // this fork: this deployment only ever talks to app.omie.com.br with locally
 // held credentials, and we don't want the agent nudged toward a third-party
-// hosted alternative.
+// hosted alternative. What goes in `instructions` instead is operational
+// (INSTRUCTIONS in tools/index.ts): the data is live, re-read before stating
+// the current state, and writes change a production ERP.
 //
 // A factory rather than one shared instance: the HTTP transport needs one
 // Server per session (the SDK ties a Server to a single transport), and
@@ -154,8 +156,22 @@ function metadataUrl(): string {
 // _requestHandlers off a template instance, which is what this used to do —
 // means every session's handlers are registered the same explicit way the
 // stdio server's are, with no dependency on the SDK's internal field layout.
+/**
+ * Every object result leaves with `read_at`, the instant Omie was asked. It is
+ * what lets the agent see, in the result itself, that it is looking at a
+ * snapshot — and re-read when the next question comes much later.
+ */
+function withReadAt(result: unknown): unknown {
+  return result !== null && typeof result === "object" && !Array.isArray(result)
+    ? { read_at: new Date().toISOString(), ...(result as Record<string, unknown>) }
+    : result;
+}
+
 function buildServer(): Server {
-  const s = new Server({ name: "mcp-omie", version: VERSION }, { capabilities: { tools: {} } });
+  const s = new Server(
+    { name: "mcp-omie", version: VERSION },
+    { capabilities: { tools: {} }, instructions: INSTRUCTIONS },
+  );
 
   s.setRequestHandler(ListToolsRequestSchema, async () => ({
     tools: TOOLS.map(({ name, description, inputSchema }) => ({ name, description, inputSchema })),
@@ -204,7 +220,7 @@ function buildServer(): Server {
         caller, tool: name, path: tool.path, call: tool.call,
         outcome: "demo", durationMs: since(), args, stamped,
       }));
-      return { content: [{ type: "text", text: JSON.stringify(DEMO_RESPONSES[name] ?? demoFallback(name, param), null, 2) }] };
+      return { content: [{ type: "text", text: JSON.stringify(withReadAt(DEMO_RESPONSES[name] ?? demoFallback(name, param)), null, 2) }] };
     }
 
     try {
@@ -213,7 +229,7 @@ function buildServer(): Server {
         caller, tool: name, path: tool.path, call: tool.call,
         outcome: "ok", durationMs: since(), args, result, stamped,
       }));
-      return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
+      return { content: [{ type: "text", text: JSON.stringify(withReadAt(result), null, 2) }] };
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       record(buildEntry({
