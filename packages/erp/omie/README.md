@@ -61,7 +61,7 @@ every `list_*` / `get_*` description repeats the clause, because not every MCP
 client injects server instructions.
 
 <!-- tools:begin — generated from src/tools by readme.test.ts; do not edit by hand -->
-## Tools (84)
+## Tools (88)
 
 > Conformance status of each tool against the official Omie API reference:
 > [`API-AUDIT.md`](./API-AUDIT.md). Every tool carries the Omie method it maps
@@ -134,7 +134,7 @@ client injects server instructions.
 | `list_services` | `ListarCadastroServico` | List or search the service catalogue in Omie ERP |
 | `list_nfse` | `ListarNFSEs` | List issued service invoices (NFS-e) in Omie ERP |
 
-### Finance — receivables, payables, ledger (21)
+### Finance — receivables, payables, ledger (25)
 
 | Tool | Omie method | Purpose |
 |---|---|---|
@@ -151,7 +151,8 @@ client injects server instructions.
 | `pay_account_payable` | `LancarPagamento` | Settle / record payment (baixa) for an AP title in Omie ERP |
 | `cancel_payment` | `CancelarPagamento` | Undo a payment (baixa) previously settled on an AP title in Omie ERP — the title goes back to open. codigo_baixa comes from pay_account_payable's response or from list_financial_movements (nCodBaixa) |
 | `create_cash_entry` | `IncluirLancCC` | Create a bank account ledger entry (lançamento de conta corrente) in Omie ERP |
-| `list_cash_entries` | `ListarLancCC` | List manual bank account ledger entries in Omie ERP — the entries create_cash_entry makes, keyed by nCodLanc |
+| `list_cash_entries` | `ListarLancCC` | List bank account ledger entries in Omie ERP, keyed by nCodLanc — both the manual ones create_cash_entry makes and the ones each AR/AP settlement posts |
+| `get_cash_entry` | `ConsultaLancCC` | Consult a single bank account ledger entry in Omie ERP — manual or posted by an AR/AP settlement |
 | `update_cash_entry` | `AlterarLancCC` | Update a manual bank account ledger entry in Omie ERP |
 | `delete_cash_entry` | `ExcluirLancCC` | Permanently delete a manual bank account ledger entry in Omie ERP — irreversible |
 | `list_financial_movements` | `ListarMovimentos` | List unified financial movements (AP + AR + CC) in Omie ERP |
@@ -159,6 +160,9 @@ client injects server instructions.
 | `get_finance_summary` | `ObterResumoFinancas` | Get the consolidated finance position for a day in Omie ERP — balances and totals rather than a title-by-title listing |
 | `list_open_titles` | `ObterListaEmAberto` | List the open titles falling due on ONE day in Omie ERP — the dashboard's "to collect / to pay today" list, NOT every open or overdue title: a title that fell due on an earlier day does not appear (on a weekend dDia it shows the last business day) |
 | `cancel_account_receivable` | `CancelarContaReceber` | Cancel an accounts receivable title in Omie ERP — status_titulo becomes CANCELADO; the invoice (NF-e / NFS-e) it came from is NOT touched |
+| `list_unreconciled_entries` | `ListarExtrato` | List what is pending bank reconciliation on one bank account over a period in Omie ERP — the extrato rows still "Não conciliado" |
+| `reconcile_receipt` | `ConciliarRecebimento` | Mark an AR settlement (baixa) as reconciled with the bank in Omie ERP — its extrato row stops being "Não conciliado" |
+| `unreconcile_receipt` | `DesconciliarRecebimento` | Undo the bank reconciliation of an AR settlement (baixa) in Omie ERP — its extrato row goes back to "Não conciliado"; the settlement itself stays (to undo that, cancel_receipt) |
 
 ### Billing — PIX & boleto (9)
 
@@ -577,13 +581,37 @@ explains itself, tools carry MCP `readOnlyHint` / `destructiveHint`
 annotations derived from the Omie method, and the tool tables above are
 generated from the definitions.
 
+### v0.9
+Bank reconciliation, as far as Omie's API allows it — checked against all 138
+published endpoints. An AR settlement can be reconciled and unreconciled after
+the fact (`ConciliarRecebimento` / `DesconciliarRecebimento`, now
+`reconcile_receipt` / `unreconcile_receipt`). An AP settlement cannot:
+`/financas/contapagar/` has no such method, so `conciliar_documento=S` on
+`pay_account_payable` is the only way, and its description now says so.
+Manual bank-ledger entries cannot be reconciled through the API either, and
+there is no statement import.
+
+`list_unreconciled_entries` is the Omie side of the work: the extrato rows
+still "Não conciliado" for one account and period, without the daily `SALDO`
+rows and the forecasts, each joined with its settlement so it carries the
+`nCodBaixa` that `reconcile_receipt` takes and says whether the API can
+reconcile it at all. `get_cash_entry` (`ConsultaLancCC`) reads one ledger entry,
+including `diversos.dDtConc`, which is how a reconciliation is confirmed.
+
+Seen in production while building it: `ListarLancCC` returns the entries that
+AR/AP settlements post, not only manual ones (`list_cash_entries` said
+otherwise), and `ConsultaLancCC` is spelled without the "r", so the read/write
+classification now matches `Consulta*` and it gets the retry every other read gets.
+
 ### Next
 - Per-user Omie App Keys, so Omie's own change history attributes to a person
   rather than to the integration app (depends on the Omie plan allowing more
   than one integration app per tenant)
 - `create_production_order` — `/produtos/op/`
 - `create_service_contract` — `/servicos/contrato/`
-- `reconcile_bank_transaction` — bank reconciliation matching
+- Matching against the bank's own statement: Omie's API has no statement
+  (OFX) import, so the bank side of `list_unreconciled_entries` has to come
+  from an OFX file or an Open Finance source
 - CRM (`/crm/*`, 19 endpoints) — currently no coverage at all
 
 Want to contribute? [Open a PR](https://github.com/codespar/mcp-dev-latam) or [request a tool](https://github.com/codespar/mcp-dev-latam/issues).

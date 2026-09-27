@@ -75,6 +75,11 @@ TOOL_METHODS: dict[str, tuple[str, str]] = {
     "get_bank_statement": ("financas/extrato", "ListarExtrato"),
     "list_open_titles": ("financas/resumo", "ObterListaEmAberto"),
     "list_pix": ("financas/pix", "ListarPix"),
+    # bank reconciliation
+    "list_unreconciled_entries": ("financas/extrato", "ListarExtrato"),
+    "get_cash_entry": ("financas/contacorrentelancamentos", "ConsultaLancCC"),
+    "reconcile_receipt": ("financas/contareceber", "ConciliarRecebimento"),
+    "unreconcile_receipt": ("financas/contareceber", "DesconciliarRecebimento"),
     # finance / billing writes whose Omie defaults or key spellings have bitten
     # (lDel deletes the title by default; codigo_baixa_integracao was missing)
     "get_account_receivable": ("financas/contareceber", "ConsultarContaReceber"),

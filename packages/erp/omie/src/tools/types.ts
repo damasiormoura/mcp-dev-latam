@@ -152,6 +152,9 @@ export const ID = {
     "AP settlement (baixa) ID — codigo_baixa in pay_account_payable's response, nCodBaixa in " +
     "list_financial_movements",
   bankAccount: "Bank account ID — nCodCC from get_bank_accounts",
+  cashEntry:
+    "Bank-ledger entry ID — nCodLanc in list_cash_entries / create_cash_entry's response (also returned as " +
+    "nCodLancamento by get_bank_statement and list_unreconciled_entries, and nCodMovCC by list_financial_movements)",
   customer: "Omie customer / supplier ID — codigo_cliente_omie from list_customers",
   product: "Omie product ID — codigo_produto from list_products",
   salesOrder: "Omie sales order ID — codigo_pedido from list_orders / create_order",

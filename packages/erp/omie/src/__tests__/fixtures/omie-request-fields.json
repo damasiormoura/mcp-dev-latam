@@ -269,6 +269,21 @@
         }
       }
     },
+    "get_cash_entry": {
+      "path": "/financas/contacorrentelancamentos/",
+      "call": "ConsultaLancCC",
+      "requestType": "lanccConsultarRequest",
+      "fields": {
+        "nCodLanc": {
+          "type": "integer",
+          "deprecated": false
+        },
+        "cCodIntLanc": {
+          "type": "string20",
+          "deprecated": false
+        }
+      }
+    },
     "get_company_info": {
       "path": "/geral/empresas/",
       "call": "ListarEmpresas",
@@ -2222,6 +2237,63 @@
         },
         "lista_local_estoque": {
           "type": "text",
+          "deprecated": false
+        }
+      }
+    },
+    "list_unreconciled_entries": {
+      "path": "/financas/extrato/",
+      "call": "ListarExtrato",
+      "requestType": "listarextrato_request",
+      "fields": {
+        "nCodCC": {
+          "type": "integer",
+          "deprecated": false
+        },
+        "cCodIntCC": {
+          "type": "string20",
+          "deprecated": false
+        },
+        "dPeriodoInicial": {
+          "type": "string10",
+          "deprecated": false
+        },
+        "dPeriodoFinal": {
+          "type": "string10",
+          "deprecated": false
+        },
+        "cExibirApenasSaldo": {
+          "type": "string1",
+          "deprecated": false
+        }
+      }
+    },
+    "reconcile_receipt": {
+      "path": "/financas/contareceber/",
+      "call": "ConciliarRecebimento",
+      "requestType": "conta_receber_conciliar_request",
+      "fields": {
+        "codigo_baixa": {
+          "type": "integer",
+          "deprecated": false
+        },
+        "codigo_baixa_integracao": {
+          "type": "string60",
+          "deprecated": false
+        }
+      }
+    },
+    "unreconcile_receipt": {
+      "path": "/financas/contareceber/",
+      "call": "DesconciliarRecebimento",
+      "requestType": "conta_receber_conciliar_request",
+      "fields": {
+        "codigo_baixa": {
+          "type": "integer",
+          "deprecated": false
+        },
+        "codigo_baixa_integracao": {
+          "type": "string60",
           "deprecated": false
         }
       }

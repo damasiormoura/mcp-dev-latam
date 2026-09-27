@@ -535,7 +535,7 @@ nem baixar um recebimento.
 | ✅ `update_account_receivable` | `AlterarContaReceber` / `UpsertContaReceber` |
 | ✅ `cancel_receipt` | `CancelarRecebimento` |
 | ✅ `cancel_account_receivable` | `CancelarContaReceber` — documentado como "cancelamento do boleto", mas verificado em produção (2026-09-27): cancela o título (status CANCELADO) |
-| `reconcile_receipt` | `ConciliarRecebimento` / `DesconciliarRecebimento` |
+| ✅ `reconcile_receipt` / `unreconcile_receipt` | `ConciliarRecebimento` / `DesconciliarRecebimento` — só contas a receber: `/financas/contapagar/` não tem método de conciliação (0.9.0; ver `list_unreconciled_entries`) |
 | ✅ `update_account_payable` | `/financas/contapagar/ AlterarContaPagar` |
 | ✅ `cancel_payment` | `CancelarPagamento` |
 | ✅ `list_cash_entries` / `update` / `delete` | `/financas/contacorrentelancamentos/ ListarLancCC`, `AlterarLancCC`, `ExcluirLancCC` (hoje só existe o incluir) |
