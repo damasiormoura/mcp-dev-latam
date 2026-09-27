@@ -539,8 +539,10 @@ describe("demo responses of read tools use the keys Omie really returns", () => 
 
   it("list_payment_terms: cadastros, and 999 is not \"A vista\"", async () => {
     const body = await demo("list_payment_terms");
-    expect(body.cadastros.find((t: any) => t.nCodigo === "999")).toMatchObject({ nParcelas: 999 });
-    expect(JSON.stringify(body)).not.toMatch(/999[^}]*A vista/i);
+    const term999 = body.cadastros.find((t: any) => t.nCodigo === "999");
+    expect(term999).toMatchObject({ nParcelas: 999 });
+    // Checked on the record itself: a regex over the whole body also sees read_at, whose milliseconds can be 999.
+    expect(term999.cDescricao).not.toMatch(/vista/i);
   });
 
   it("list_customers, get_financial, get_bank_accounts, list_stock_locations: the real ID and list keys", async () => {
