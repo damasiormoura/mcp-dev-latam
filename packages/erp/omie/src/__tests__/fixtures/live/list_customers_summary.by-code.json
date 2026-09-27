@@ -1,0 +1,26 @@
+{
+  "_comment": "Production 2026-09-27: ListarClientesResumido with clientesPorCodigo as objects (a bare number list was refused: \"O preenchimento da tag [codigo_cliente_omie] ou [codigo_cliente_integracao] é obrigatório!\"). The reduced record carries codigo_cliente, not codigo_cliente_omie. Anonymized.",
+  "tool": "list_customers_summary",
+  "args": {
+    "clientesPorCodigo": [
+      {
+        "codigo_cliente_omie": 5951279344
+      }
+    ]
+  },
+  "response": {
+    "pagina": 1,
+    "total_de_paginas": 1,
+    "registros": 1,
+    "total_de_registros": 1,
+    "clientes_cadastro_resumido": [
+      {
+        "cnpj_cpf": "01.001.001/0001-01",
+        "codigo_cliente": 5951279344,
+        "codigo_cliente_integracao": "5951279343",
+        "nome_fantasia": "EMPRESA EXEMPLO A LTDA",
+        "razao_social": "EMPRESA EXEMPLO A LTDA"
+      }
+    ]
+  }
+}

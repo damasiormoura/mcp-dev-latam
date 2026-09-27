@@ -1,0 +1,34 @@
+{
+  "_comment": "Production 2026-09-27: first product of ListarProdutos with the tool's filtrar_apenas_omiepdv=N (213 products; with the flag S Omie returns 0). The description is shown as Omie stores it, HTML-escaped (&quot;) — the tool decodes it. Tax fields trimmed.",
+  "tool": "list_products",
+  "args": {
+    "registros_por_pagina": 1
+  },
+  "response": {
+    "pagina": 1,
+    "total_de_paginas": 213,
+    "registros": 1,
+    "total_de_registros": 213,
+    "produto_servico_cadastro": [
+      {
+        "codigo": "2000000000002",
+        "codigo_familia": 0,
+        "codigo_produto": 5955136352,
+        "codigo_produto_integracao": "2000000000002",
+        "descricao": "BOBINA ELETROGAS DE 1/2&quot;",
+        "inativo": "N",
+        "ncm": "8481.90.90",
+        "unidade": "PC",
+        "valor_unitario": 580,
+        "info": {
+          "dAlt": "15/08/2026",
+          "dInc": "15/08/2026",
+          "hAlt": "21:18:38",
+          "hInc": "21:18:37",
+          "uAlt": "P000000001",
+          "uInc": "P000000001"
+        }
+      }
+    ]
+  }
+}

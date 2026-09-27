@@ -1,0 +1,40 @@
+{
+  "_comment": "Production 2026-09-27: 15/07..27/09 returned 42 movements while 01/08..27/09 returned 63 and 14/09..27/09 returned 21 — Omie cut the window about 60 days after dDtInicial.",
+  "tool": "list_stock_movements",
+  "args": {
+    "nRegPorPagina": 1,
+    "dDtInicial": "15/07/2026",
+    "dDtFinal": "27/09/2026"
+  },
+  "response": {
+    "nPagina": 1,
+    "nTotPaginas": 42,
+    "nRegistros": 1,
+    "nTotRegistros": 42,
+    "movProdutoListar": [
+      {
+        "cancelamento": "N",
+        "cmc": 0,
+        "codOrigem": "VEN",
+        "codigo_local_estoque": 5950680196,
+        "desOrigem": "Venda de Produto",
+        "descricao": "REGULADORA DE PRESSAO ALIANCA 50KG/H",
+        "devolucao": "N",
+        "dtEmissao": "10/09/2026",
+        "dtMov": "10/09/2026",
+        "idDoc": 5964987517,
+        "idItem": 5964983777,
+        "idMov": 5964987704,
+        "idPedido": 5964983773,
+        "idProd": 5955136354,
+        "numDoc": "00003997",
+        "numPedido": "Pedido nº 16",
+        "operacao": "11",
+        "qtde": -1,
+        "saldo": -1,
+        "tipo": "saida",
+        "valor": 0
+      }
+    ]
+  }
+}

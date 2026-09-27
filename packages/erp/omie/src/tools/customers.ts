@@ -29,6 +29,22 @@ const customerFields = {
   inativo: flag("Customer is inactive"),
 } as const;
 
+/**
+ * What clientesFiltro actually filters on. Production, 2026-09-27, one call per
+ * key against a 238-record register: the seven keys below narrowed the result;
+ * estado, cidade (name or IBGE code), email (partial or exact), bairro, cep,
+ * endereco, inscricao_estadual, inscricao_municipal, pessoa_fisica,
+ * optante_simples_nacional and contato all came back with the full 238 —
+ * accepted and ignored, so an agent "filtering by state" was handed the whole
+ * register.
+ */
+const CUSTOMER_FILTER =
+  "Filter object. Keys that filter: codigo_cliente_omie, codigo_cliente_integracao, cnpj_cpf (with or " +
+  "without punctuation), razao_social (matches any part of the name), nome_fantasia, inativo, " +
+  "tags (e.g. [{\"tag\": \"Fornecedor\"}]). Omie ignores every other key — estado, cidade, email, " +
+  "bairro, cep, endereco, inscrições, pessoa_fisica, optante_simples_nacional, contato — and returns " +
+  "the unfiltered register, so filter those on the result instead";
+
 export const customerTools: OmieTool[] = [
   {
     name: "list_customers",
@@ -36,20 +52,15 @@ export const customerTools: OmieTool[] = [
       "List or search customers (and suppliers — Omie keeps both in one register) in Omie ERP " +
       "(ListarClientes). Returns codigo_cliente_omie, the ID other tools take as codigo_cliente, " +
       "codigo_cliente_fornecedor, nCodCli, nIdCliente or nCodCliente. Search with clientesFiltro, e.g. " +
-      "{\"cnpj_cpf\": \"...\"} or {\"razao_social\": \"...\"}, instead of paging.",
+      "{\"cnpj_cpf\": \"...\"} or {\"razao_social\": \"...\"}, instead of paging — but not by state, city or " +
+      "e-mail: Omie ignores those keys and returns everyone.",
     path: PATH,
     call: "ListarClientes",
     inputSchema: {
       type: "object",
       properties: {
         ...pagingSchema("snake"),
-        clientesFiltro: {
-          type: "object",
-          description:
-            "Filter object. Keys: codigo_cliente_omie, codigo_cliente_integracao, cnpj_cpf, razao_social, " +
-            "nome_fantasia, endereco, bairro, cidade, estado, cep, contato, email, inscricao_estadual, " +
-            "inscricao_municipal, pessoa_fisica, optante_simples_nacional, inativo, tags",
-        },
+        clientesFiltro: { type: "object", description: CUSTOMER_FILTER },
       },
     },
     param: withPaging("snake"),
@@ -114,9 +125,10 @@ export const customerTools: OmieTool[] = [
   {
     name: "list_customers_summary",
     description:
-      "List or search customers in the reduced form (ListarClientesResumido) — fewer fields per record " +
-      "than list_customers, so it stays within a page budget when scanning a large base. Accepts the " +
-      "same clientesFiltro object as list_customers.",
+      "List or search customers in the reduced form (ListarClientesResumido) — five fields per record " +
+      "(codigo_cliente, codigo_cliente_integracao, razao_social, nome_fantasia, cnpj_cpf), so it stays " +
+      "within a page budget when scanning a large base. The ID comes back as codigo_cliente here — the same " +
+      "value list_customers calls codigo_cliente_omie. Accepts the same clientesFiltro object as list_customers.",
     path: PATH,
     call: "ListarClientesResumido",
     inputSchema: {
@@ -124,10 +136,23 @@ export const customerTools: OmieTool[] = [
       properties: {
         ...pagingSchema("snake"),
         ...changeTrackingFilters(),
-        clientesFiltro: { type: "object", description: "Filter object (nome_fantasia, cnpj_cpf, razao_social, etc.)" },
-        clientesPorCodigo: { type: "array", description: "Filter by a list of customer codes" },
+        clientesFiltro: { type: "object", description: CUSTOMER_FILTER },
+        clientesPorCodigo: {
+          type: "array",
+          description: "Filter by a list of customers, each given as an object — [5960133379] is refused by Omie",
+          items: {
+            type: "object",
+            properties: {
+              codigo_cliente_omie: { type: "number", description: ID.customer },
+              codigo_cliente_integracao: { type: "string", description: "Integration code (alternative)" },
+            },
+            anyOfRequired: ["codigo_cliente_omie", "codigo_cliente_integracao"],
+          },
+        },
         apenas_importado_api: flag("Only API-created records"),
-        exibir_obs: flag("Include customer notes"),
+        exibir_obs: flag(
+          "Accepted but has no effect here: the reduced record has no notes field. Read notes with get_customer (observacao)"
+        ),
       },
     },
     param: withPaging("snake"),

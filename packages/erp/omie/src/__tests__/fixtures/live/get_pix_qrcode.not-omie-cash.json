@@ -1,0 +1,14 @@
+{
+  "_comment": "Production 2026-09-27, the single GerarQrCodePix call of the run: a regular bank account cannot have a static QR code — only an Omie.CASH one, and this account's Omie.CASH is inactive.",
+  "tool": "get_pix_qrcode",
+  "args": {
+    "nIdConta": 5952605177
+  },
+  "response": {
+    "cUrlPix": "",
+    "cQrCode": "",
+    "cCopiaCola": "",
+    "cCodStatus": "719",
+    "cDescStatus": "A conta corrente informada não está associada ao Omie.CASH, e por isso não pode gerar um QR Code Estático."
+  }
+}

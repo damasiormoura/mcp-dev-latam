@@ -1,0 +1,54 @@
+{
+  "_comment": "Production 2026-09-27: ListarExtrato for one day. The entry is \"Não conciliado\" — the statement lists unreconciled entries too. Account number, agency and names anonymized.",
+  "tool": "get_bank_statement",
+  "args": {
+    "nCodCC": 5952605177,
+    "dPeriodoInicial": "09/09/2026",
+    "dPeriodoFinal": "09/09/2026"
+  },
+  "response": {
+    "nCodCC": 5952605177,
+    "cCodIntCC": "",
+    "nCodAgencia": "000000",
+    "nCodBanco": "748",
+    "nNumConta": "000000",
+    "cDescricao": "Sicredi",
+    "cCodTipo": "CC",
+    "cDesTipo": "Conta Corrente",
+    "dPeriodoInicial": "09/09/2026",
+    "dPeriodoFinal": "09/09/2026",
+    "nSaldoAnterior": 9870.04,
+    "nSaldoAtual": 15870.04,
+    "nSaldoConciliado": -1100,
+    "listaMovimentos": [
+      {
+        "cDesCliente": "SALDO ANTERIOR",
+        "dDataLancamento": "08/09/2026",
+        "nCodLancamento": 1,
+        "nSaldo": 9870.04,
+        "nValorDocumento": 0
+      },
+      {
+        "cCodCategoria": "1.01.03",
+        "cDesCliente": "EMPRESA EXEMPLO B LTDA",
+        "cDocCliente": "02.002.002/0001-02",
+        "cNatureza": "R",
+        "cOrigem": "Conta Recebida",
+        "cRazCliente": "EMPRESA EXEMPLO C LTDA",
+        "cSituacao": "Não conciliado",
+        "dDataLancamento": "09/09/2026",
+        "nCodCliente": 5963757368,
+        "nCodLancamento": 5964359132,
+        "nSaldo": 15870.04,
+        "nValorDocumento": 6000
+      },
+      {
+        "cDesCliente": "SALDO",
+        "dDataLancamento": "09/09/2026",
+        "nCodLancamento": 2,
+        "nSaldo": 15870.04,
+        "nValorDocumento": 0
+      }
+    ]
+  }
+}

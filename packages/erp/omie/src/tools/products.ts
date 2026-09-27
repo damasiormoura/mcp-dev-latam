@@ -35,9 +35,20 @@ export const productTools: OmieTool[] = [
         ...pagingSchema("snake"),
         ...changeTrackingFilters(),
         ...orderingFilters("ordenar_por", "ordem_decrescente"),
+        // Production, 2026-09-27: ordenar_por="DESCRICAO" returned the same code
+        // order as no sort key at all (also with ordem_decrescente="S"), and the
+        // docs list no accepted value — only the code order is known to work.
+        ordenar_por: {
+          type: "string",
+          description:
+            "Sort key. Omie documents no accepted value here besides the default code order; \"DESCRICAO\" was " +
+            "ignored in production. Use ordem_decrescente for the newest codes first",
+        },
         filtrar_apenas_descricao: {
           type: "string",
-          description: "Filter by description: \"TEXT\" exact, \"TEXT%\" starts with, \"%TEXT\" ends with, \"%TEXT%\" contains",
+          description:
+            "Filter by description: \"TEXT\" exact, \"TEXT%\" starts with, \"%TEXT\" ends with, \"%TEXT%\" contains. " +
+            "At least 3 characters besides the % — Omie refuses \"A%\"",
         },
         filtrar_apenas_familia: { type: "string", description: "Filter by product family ID" },
         inativo: flag("Filter by inactive status"),

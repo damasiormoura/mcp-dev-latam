@@ -1,0 +1,13 @@
+{
+  "_comment": "Production 2026-09-27: ValidarPedidoVenda on a billed order. cCodIntPed comes back as 60 spaces when the order has no integration code.",
+  "tool": "validate_order",
+  "args": {
+    "nCodPed": 5962530736
+  },
+  "response": {
+    "cCodIntPed": "                                                            ",
+    "nCodPed": 5962530736,
+    "cCodStatus": "1",
+    "cDescStatus": "Foram encontrados erros durante a validação dessa Pedido de Venda de Produto! Não é possível faturar, pois o Pedido de Venda de Produto já foi autorizado."
+  }
+}

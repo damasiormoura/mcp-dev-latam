@@ -1,0 +1,71 @@
+{
+  "_comment": "Production 2026-09-27: ListarNF with filtrar_por_data_de/ate 20/09..27/09 and filtrar_apenas_alteracao=S — 9 NFs (the same window with no flag returned all 453). Page 1 of 9 at one record per page; tax blocks trimmed. Anonymized.",
+  "tool": "list_invoices",
+  "args": {
+    "filtrar_por_data_de": "20/09/2026",
+    "filtrar_por_data_ate": "27/09/2026",
+    "cApenasResumo": "S",
+    "registros_por_pagina": 1
+  },
+  "response": {
+    "pagina": 1,
+    "total_de_paginas": 9,
+    "registros": 1,
+    "total_de_registros": 9,
+    "nfCadastro": [
+      {
+        "compl": {
+          "cChaveNFe": "35260900000000000002550010000000001000000002",
+          "cCodCateg": "2.01.01",
+          "cModFrete": "0",
+          "nIdNF": 5969952350,
+          "nIdPedido": 0,
+          "nIdReceb": 5967546996,
+          "nIdTransp": 0
+        },
+        "det": [],
+        "ide": {
+          "cDeneg": "N",
+          "dCan": "",
+          "dEmi": "16/09/2026",
+          "dReg": "16/09/2026",
+          "dSaiEnt": "16/09/2026",
+          "finNFe": "1",
+          "mod": "55",
+          "nNF": "000000607",
+          "serie": "1",
+          "tpAmb": "1",
+          "tpNF": "0"
+        },
+        "info": {
+          "cImpAPI": "N",
+          "dAlt": "20/09/2026",
+          "dInc": "20/09/2026",
+          "hAlt": "11:52:41",
+          "hInc": "11:52:41",
+          "uAlt": "P000000002",
+          "uInc": "P000000002"
+        },
+        "nfDestInt": {
+          "cCodCliInt": "",
+          "cRazao": "EMPRESA EXEMPLO B LTDA",
+          "cnpj_cpf": "02.002.002/0001-02",
+          "nCodCli": 5957479785
+        },
+        "nfEmitInt": {
+          "cCodEmpInt": "",
+          "nCodEmp": 5950680145
+        },
+        "pedido": {},
+        "titulos": [],
+        "total": {
+          "ICMSTot": {
+            "vFrete": 50,
+            "vNF": 1630,
+            "vProd": 1630
+          }
+        }
+      }
+    ]
+  }
+}

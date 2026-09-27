@@ -262,8 +262,9 @@ export const serviceTools: OmieTool[] = [
     name: "list_services",
     description:
       "List or search the service catalogue in Omie ERP (ListarCadastroServico). Resolves the " +
-      "nCodServico that create_service_order items reference, along with their LC 116 and municipal " +
-      "codes — pass cDescricao or cCodigo to find one rather than paging.",
+      "nCodServico that create_service_order items reference — returned here as intListar.nCodServ — along " +
+      "with their LC 116 and municipal codes; pass cDescricao or cCodigo to find one rather than paging. " +
+      "Results come in code order: in production cOrdenarPor and cOrdemDecrescente changed nothing.",
     path: "/servicos/servico/",
     call: "ListarCadastroServico",
     inputSchema: {
@@ -271,7 +272,10 @@ export const serviceTools: OmieTool[] = [
       properties: {
         ...pagingSchema("n"),
         ...orderingFilters("cOrdenarPor", "cOrdemDecrescente"),
-        cDescricao: { type: "string", description: "Filter by the service's short description" },
+        cDescricao: {
+          type: "string",
+          description: "Filter by the service's short description — matches the start (\"VISITA\"); use % for anywhere (\"%TÉCNICA%\")",
+        },
         cCodigo: { type: "string", description: "Filter by service code" },
         inativo: flag("Filter by inactive status"),
         dInclusaoInicial: date("Created from"),

@@ -78,7 +78,7 @@ client injects server instructions.
 | `get_customer` | `ConsultarCliente` | Consult a single customer in Omie ERP by Omie ID or integration code |
 | `update_customer` | `AlterarCliente` | Update an existing customer in Omie ERP |
 | `upsert_customer` | `UpsertClienteCpfCnpj` | Create or update a customer in Omie ERP keyed on CNPJ/CPF |
-| `list_customers_summary` | `ListarClientesResumido` | List or search customers in the reduced form — fewer fields per record than list_customers, so it stays within a page budget when scanning a large base |
+| `list_customers_summary` | `ListarClientesResumido` | List or search customers in the reduced form — five fields per record (codigo_cliente, codigo_cliente_integracao, razao_social, nome_fantasia, cnpj_cpf), so it stays within a page budget when scanning a large base |
 
 ### Products (5)
 
@@ -106,10 +106,10 @@ client injects server instructions.
 | `validate_order` | `ValidarPedidoVenda` | Validate a sales order for billing in Omie ERP without issuing anything |
 | `invoice_sales_order` | `FaturarPedidoVenda` | Bill a sales order in Omie ERP: issues the NF-e to SEFAZ and creates the AR title(s) and, unless disabled per item, the stock exit — a fiscal act |
 | `cancel_order` | `CancelarPedidoVenda` | Cancel a sales order in Omie ERP — for an order that was billed or must stay on record as cancelled; one never billed can simply be removed with delete_order |
-| `list_order_stages` | `ListarEtapasPedido` | List the sales order stages configured for this Omie account |
-| `list_invoices` | `ListarNF` | List or search invoices (NF) from Omie ERP; returns nIdNF, the ID create_invoice and get_invoice_pdf take. cDetalhesPedido="S" fills `pedido` and `titulos` for an NF issued from a sales order (NFs with no originating order leave them empty). cApenasResumo="S" drops the item lines (det) but keeps the full `total` block; Omie itself would also empty `pedido` and `titulos`, so when both flags are set this tool asks for the full NF and removes `det` itself |
+| `list_order_stages` | `ListarEtapasPedido` | List the stage history of sales orders in Omie ERP: one row per stage an order entered — nCodPed, cNumero, cEtapa, dDtEtapa / cHrEtapa / cUsEtapa (who moved it, when) — with the order's billing, cancellation and return flags, so an order billed (60) and then moved to 70 appears twice |
+| `list_invoices` | `ListarNF` | List or search invoices (NF) from Omie ERP; returns nIdNF, the ID create_invoice and get_invoice_pdf take |
 | `create_invoice` | `ConsultarNF` | Consult a specific NF in Omie ERP |
-| `get_invoice_pdf` | `ObterNfe` | Get the download links for an issued NF-e in Omie ERP — the DANFE PDF and the XML |
+| `get_invoice_pdf` | `ObterNfe` | Get an issued NF-e's documents in Omie ERP: cPdf (DANFE link), cLinkPortal, and cXmlNfe — the whole authorized XML inline, several KB, not a link |
 
 ### Purchasing (3)
 
@@ -156,8 +156,8 @@ client injects server instructions.
 | `update_cash_entry` | `AlterarLancCC` | Update a manual bank account ledger entry in Omie ERP |
 | `delete_cash_entry` | `ExcluirLancCC` | Permanently delete a manual bank account ledger entry in Omie ERP — irreversible |
 | `list_financial_movements` | `ListarMovimentos` | List unified financial movements (AP + AR + CC) in Omie ERP |
-| `get_bank_statement` | `ListarExtrato` | Retrieve a bank account statement (extrato) for a period from Omie ERP — every credit and debit with the running balance, as reconciled in Omie |
-| `get_finance_summary` | `ObterResumoFinancas` | Get the consolidated finance position for a day in Omie ERP — balances and totals rather than a title-by-title listing |
+| `get_bank_statement` | `ListarExtrato` | Retrieve a bank account statement (extrato) for a period from Omie ERP — every credit and debit with the running balance, reconciled or not (each row's cSituacao says which) |
+| `get_finance_summary` | `ObterResumoFinancas` | Get the consolidated finance position in Omie ERP — balances, AR/AP totals and a 10-day cash flow rather than a title-by-title listing |
 | `list_open_titles` | `ObterListaEmAberto` | List the open titles falling due on ONE day in Omie ERP — the dashboard's "to collect / to pay today" list, NOT every open or overdue title: a title that fell due on an earlier day does not appear (on a weekend dDia it shows the last business day) |
 | `cancel_account_receivable` | `CancelarContaReceber` | Cancel an accounts receivable title in Omie ERP — status_titulo becomes CANCELADO; the invoice (NF-e / NFS-e) it came from is NOT touched |
 | `list_unreconciled_entries` | `ListarExtrato` | List what is pending bank reconciliation on one bank account over a period in Omie ERP — the extrato rows still "Não conciliado" |
@@ -174,7 +174,7 @@ client injects server instructions.
 | `list_pix` | `ListarPix` | List or search PIX charges in Omie ERP |
 | `cancel_pix` | `CancelarPix` | Cancel a PIX charge in Omie ERP |
 | `generate_boleto` | `GerarBoleto` | Generate and register a boleto for an AR title in Omie ERP |
-| `get_boleto` | `ObterBoleto` | Get the download link for a boleto already generated in Omie ERP |
+| `get_boleto` | `ObterBoleto` | Get the download link (cLinkBoleto), barcode and number of a boleto already generated in Omie ERP |
 | `extend_boleto` | `ProrrogarBoleto` | Change the due date of a registered boleto in Omie ERP |
 | `cancel_boleto` | `CancelarBoleto` | Cancel only the boleto of an AR title in Omie ERP — not the receivable itself: to cancel the title (status CANCELADO) use cancel_account_receivable |
 

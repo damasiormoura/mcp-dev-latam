@@ -81,7 +81,7 @@ const MIN_ARGS: Record<string, unknown> = {
   cancel_receipt: { codigo_baixa: 7 },
   reconcile_receipt: { codigo_baixa: 7 },
   unreconcile_receipt: { codigo_baixa: 7 },
-  get_bank_statement: { dPeriodoInicial: "01/01/2027", dPeriodoFinal: "31/01/2027" },
+  get_bank_statement: { nCodCC: 3, dPeriodoInicial: "01/01/2027", dPeriodoFinal: "31/01/2027" },
   create_cash_entry: {
     cCodIntLanc: "CC-1",
     cabecalho: { nCodCC: 3, dDtLanc: "01/01/2027", nValorLanc: 100 },

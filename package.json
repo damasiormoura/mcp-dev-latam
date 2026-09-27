@@ -20,11 +20,13 @@
   "scripts": {
     "build": "npm run build --workspaces",
     "test": "vitest run",
+    "coverage:omie": "vitest run packages/erp/omie --coverage.enabled --coverage.provider=v8 --coverage.include='packages/erp/omie/src/tools/**' --coverage.include=packages/erp/omie/src/index.ts --coverage.include=packages/erp/omie/src/omie.ts --coverage.thresholds.100 --coverage.reporter=text",
     "audit:catalog": "python3 scripts/audit-catalog.py",
     "audit:catalog:json": "python3 scripts/audit-catalog.py --json",
     "audit:catalog:write": "python3 scripts/audit-catalog.py --out docs/catalog-audit.md"
   },
   "devDependencies": {
+    "@vitest/coverage-v8": "^3.2.4",
     "dotenv": "^16.6.1",
     "vitest": "^3.1.1"
   },

@@ -160,7 +160,8 @@ async function listUnreconciled(args: Record<string, unknown>, ctx: RunContext) 
     ...classify(r, byMovCC.get(r.nCodLancamento)),
   }));
 
-  const soma = (xs: any[]) => Math.round(xs.reduce((s, p) => s + Number(p.nValorDocumento ?? 0), 0) * 100) / 100;
+  // Only ever given rows already filtered on Number(nValorDocumento) > 0 or < 0, so the value is always there.
+  const soma = (xs: any[]) => Math.round(xs.reduce((s, p) => s + Number(p.nValorDocumento), 0) * 100) / 100;
   return {
     conta: {
       nCodCC,

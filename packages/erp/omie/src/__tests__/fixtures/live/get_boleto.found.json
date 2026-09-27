@@ -1,0 +1,24 @@
+{
+  "_comment": "Production 2026-09-27: ObterBoleto on a title whose boleto was generated 03/09 — Omie says \"Boleto gerado com sucesso!\" on this plain read (dDtEmBol unchanged). Link and barcode anonymized.",
+  "tool": "get_boleto",
+  "args": {
+    "nCodTitulo": 5962783931
+  },
+  "response": {
+    "cLinkBoleto": "https://cdn.example.invalid/documento-1.pdf",
+    "cCodStatus": "0",
+    "cDesStatus": "Boleto gerado com sucesso!",
+    "dDtEmBol": "03/09/2026",
+    "cNumBoleto": "600000003",
+    "cCodBarras": "00000000000000000000000000000000000000000000000",
+    "nPerJuros": 0,
+    "nPerMulta": 0,
+    "cNumBancario": "600000003",
+    "dDescontoCond1": "",
+    "vDescontoCond1": 0,
+    "dDescontoCond2": "",
+    "vDescontoCond2": 0,
+    "dDescontoCond3": "",
+    "vDescontoCond3": 0
+  }
+}

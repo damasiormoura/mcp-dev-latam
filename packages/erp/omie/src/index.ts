@@ -49,7 +49,7 @@ import { TOOLS, findTool, INSTRUCTIONS, annotationsFor } from "./tools/index.js"
 import { ToolRefusal } from "./tools/types.js";
 import { type Caller, attributionText, buildEntry, closeAuditLog, currentCaller, record, reopenAuditLog, stamp, withCaller } from "./audit.js";
 
-const VERSION = "0.9.0";
+const VERSION = "0.9.1";
 
 const DEMO_MODE = process.argv.includes("--demo") || process.env.MCP_DEMO === "true";
 
@@ -62,14 +62,17 @@ const DEMO_MODE = process.argv.includes("--demo") || process.env.MCP_DEMO === "t
 // the Omie reference, not guessing plausible-looking JSON.
 const DEMO_RESPONSES: Record<string, unknown> = {
   create_order: { nCodPed: 12345, cCodIntPed: "PED-DEMO-001", cNumPedido: "001234", dDtPrevisao: "2026-04-15", nValorTotal: 150.00, cStatusPedido: "Faturado", items: [{ cDescricao: "Produto Demo", nQuantidade: 1, nValorUnitario: 150.00 }] },
-  list_customers: { clientes_cadastro: [{ codigo_cliente: 1001, razao_social: "Demo Comércio LTDA", cnpj_cpf: "12345678000190", email: "contato@demo.com" }], pagina: 1, total_de_paginas: 1, registros: 1, total_de_registros: 1 },
+  list_customers: { clientes_cadastro: [{ codigo_cliente_omie: 1001, razao_social: "Demo Comércio LTDA", cnpj_cpf: "12345678000190", email: "contato@demo.com" }], pagina: 1, total_de_paginas: 1, registros: 1, total_de_registros: 1 },
   create_customer: { codigo_cliente: 1001, codigo_cliente_integracao: "CLI-DEMO-001", codigo_status: "0", descricao_status: "Cliente incluído com sucesso" },
   list_orders: { pedido_venda_produto: [{ cabecalho: { nCodPed: 12345, cNumPedido: "001234", nValorTotal: 150.00, cStatusPedido: "Faturado" } }], pagina: 1, total_de_paginas: 1, registros: 1 },
   list_products: { produto_servico_cadastro: [{ codigo_produto: 2001, descricao: "Produto Demo", valor_unitario: 150.00, codigo: "PROD-001" }], pagina: 1, total_de_paginas: 1, registros: 1 },
-  get_financial: { conta_receber_cadastro: [{ codigo_lancamento: 3001, valor_documento: 150.00, status_titulo: "Liquidado", data_vencimento: "15/04/2026" }], pagina: 1, total_de_paginas: 1 },
-  get_bank_accounts: { ListarContasCorrentes: [{ nCodCC: 4001, cDescricao: "Conta Demo Banco do Brasil", cCodBanco: "001" }] },
-  list_payment_terms: { parcela_cadastro: [{ nCodigo: "999", cDescricao: "A vista", nParcelas: 1 }], pagina: 1, total_de_paginas: 1 },
-  list_stock_locations: { locais: [{ codigo: 5001, descricao: "Almoxarifado Central" }], nPagina: 1, nTotPaginas: 1 },
+  // The four below were corrected against production responses (2026-09-27):
+  // the ID and list keys are the ones Omie actually returns, and 999 is not
+  // "A vista" — it is "Informar o número de parcelas".
+  get_financial: { conta_receber_cadastro: [{ codigo_lancamento_omie: 3001, valor_documento: 150.00, status_titulo: "RECEBIDO", data_vencimento: "15/04/2026" }], pagina: 1, total_de_paginas: 1 },
+  get_bank_accounts: { ListarContasCorrentes: [{ nCodCC: 4001, descricao: "Conta Demo Banco do Brasil", codigo_banco: "001" }] },
+  list_payment_terms: { cadastros: [{ nCodigo: "000", cDescricao: "A Vista", nParcelas: 1 }, { nCodigo: "999", cDescricao: "Informar o número de parcelas", nParcelas: 999 }], pagina: 1, total_de_paginas: 1 },
+  list_stock_locations: { locaisEncontrados: [{ codigo: "PADRAO", codigo_local_estoque: 5001, descricao: "Almoxarifado Central" }], nPagina: 1, nTotPaginas: 1 },
 
   // Added when extending demo-mode coverage for section 4.6 — each shaped
   // from the endpoint's real *_response / *_resposta / *Response type.

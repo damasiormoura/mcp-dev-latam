@@ -95,7 +95,10 @@ export const financeTools: OmieTool[] = [
         filtrar_por_emissao_ate: date("Issue date to"),
         filtrar_por_data_de: date("Inclusion / change date from"),
         filtrar_por_data_ate: date("Inclusion / change date to"),
-        filtrar_por_status: { type: "string", description: "Title status (RECEBIDO, ATRASADO, AVENCER, VENCEHOJE, EMABERTO, CANCELADO, ...)" },
+        filtrar_por_status: {
+          type: "string",
+          description: "Title status (RECEBIDO, ATRASADO, AVENCER, VENCEHOJE, EMABERTO, CANCELADO, ...). Rows spell it status_titulo \"A VENCER\", with a space",
+        },
         filtrar_apenas_titulos_em_aberto: flag("Only titles still open"),
         filtrar_cliente: { type: "number", description: `Filter by ${ID.customer}` },
         filtrar_por_cpf_cnpj: { type: "string", description: "Filter by customer CPF / CNPJ" },
@@ -221,7 +224,12 @@ export const financeTools: OmieTool[] = [
       type: "object",
       properties: {
         ...pagingSchema("snake"),
-        filtrar_por_status: { type: "string", description: "Title status: CANCELADO, PAGO, LIQUIDADO, EMABERTO, ATRASADO, VENCEHOJE, AVENCER, PAGTOPARCIAL" },
+        filtrar_por_status: {
+          type: "string",
+          description:
+            "Title status: CANCELADO, PAGO, LIQUIDADO, EMABERTO, ATRASADO, VENCEHOJE, AVENCER, PAGTOPARCIAL. PAGO and " +
+            "LIQUIDADO also match a title paid and later cancelled — check status_titulo on each row",
+        },
         filtrar_por_emissao_de: date("Issue date from"),
         filtrar_por_emissao_ate: date("Issue date to"),
         filtrar_por_data_de: date("Inclusion / change date from"),
@@ -372,9 +380,10 @@ export const financeTools: OmieTool[] = [
     description:
       "List bank account ledger entries in Omie ERP (ListarLancCC), keyed by nCodLanc — both the manual ones " +
       "create_cash_entry makes and the ones each AR/AP settlement posts. A settlement's entry has " +
-      "diversos.cOrigem BAXR / BAXP and the title in diversos.nCodLancCR / nCodLancCP; diversos.dDtConc is " +
-      "the reconciliation date, empty while the entry is unreconciled. The settlement ID (nCodBaixa) is not " +
-      "here: see list_financial_movements, or list_unreconciled_entries for what is pending reconciliation.",
+      "diversos.cOrigem BAXR / BAXP (origins Omie's docs leave out; filter cOrigem to see one kind) and the " +
+      "title in diversos.nCodLancCR / nCodLancCP; diversos.dDtConc is the reconciliation date, empty while the " +
+      "entry is unreconciled. The settlement ID (nCodBaixa) is not here: see list_financial_movements, or " +
+      "list_unreconciled_entries for what is pending reconciliation.",
     path: CC,
     call: "ListarLancCC",
     inputSchema: {
@@ -385,7 +394,12 @@ export const financeTools: OmieTool[] = [
         dtPagFinal: date("Payment date to"),
         dDtIncDe: date("Inclusion date from"),
         dDtIncAte: date("Inclusion date to"),
-        cOrigem: { type: "string", description: "Entry origin code, 4 chars (e.g. DEVP for a sales-return payable)" },
+        cOrigem: {
+          type: "string",
+          description:
+            "Entry origin code, 4 chars: BAXR / BAXP = AR / AP settlement, EXTR / EXTP = manual receipt / expense, " +
+            "TRAR / TRAP = transfer in / out, DEVP = sales-return payable, ...",
+        },
       },
     },
     param: withPaging("n"),
@@ -474,8 +488,8 @@ export const financeTools: OmieTool[] = [
       "rows (cGrupo CONTA_CORRENTE_*), applies cStatus to the titles only, and pages the two groups " +
       "separately — so this tool sends cTpLancamento=CR / CP / CPCR (titles only) whenever cStatus is " +
       "given without one; pass cTpLancamento yourself for settlements (BXCR / BXCP) or ledger rows (CC). " +
-      "With no date filter at all it returns only the last 30 days, so an empty result does not mean the " +
-      "company has no history.",
+      "Omie's docs state no default date window, and in production the unfiltered call returned titles issued " +
+      "and paid seven weeks earlier: pass the date range you mean rather than relying on a default.",
     path: "/financas/mf/",
     call: "ListarMovimentos",
     inputSchema: {
@@ -522,7 +536,8 @@ export const financeTools: OmieTool[] = [
     name: "get_bank_statement",
     description:
       "Retrieve a bank account statement (extrato) for a period from Omie ERP (ListarExtrato) — every credit " +
-      "and debit with the running balance, as reconciled in Omie.",
+      "and debit with the running balance, reconciled or not (each row's cSituacao says which). Identify the " +
+      "account with nCodCC or cCodIntCC — Omie refuses the call without one.",
     path: "/financas/extrato/",
     call: "ListarExtrato",
     inputSchema: {
@@ -535,24 +550,32 @@ export const financeTools: OmieTool[] = [
         cExibirApenasSaldo: flag("Show only balances"),
       },
       required: ["dPeriodoInicial", "dPeriodoFinal"],
+      anyOfRequired: ["nCodCC", "cCodIntCC"],
     },
   },
   {
     name: "get_finance_summary",
     description:
-      "Get the consolidated finance position for a day in Omie ERP (ObterResumoFinancas) — balances and " +
-      "totals rather than a title-by-title listing. Defaults to today when dDia is omitted.",
+      "Get the consolidated finance position in Omie ERP (ObterResumoFinancas) — balances, AR/AP totals and a " +
+      "10-day cash flow rather than a title-by-title listing. The balances and totals are the current ones; " +
+      "dDia (default today) only moves where the cash flow starts. lApenasResumo=false adds the overdue lists " +
+      "(contaReceberAtraso / contaPagarAtraso), and only then does lExibirCategoria=true fill the per-category " +
+      "totals.",
     path: "/financas/resumo/",
     call: "ObterResumoFinancas",
     transform: withoutBankLogo,
     inputSchema: {
       type: "object",
       properties: {
-        dDia: date("Reference date; defaults to today"),
-        lApenasResumo: { type: "boolean", description: "Return only the summary structures, without the per-entry detail" },
-        lExibirCategoria: { type: "boolean", description: "Break the totals down by category" },
+        dDia: date("First day of the cash flow; defaults to today"),
+        lApenasResumo: { type: "boolean", description: "Summary only (default true, Omie's own default); false adds the overdue lists" },
+        lExibirCategoria: { type: "boolean", description: "Break the totals down by category — takes effect only with lApenasResumo=false" },
       },
     },
+    // Production, 2026-09-27: with no arguments the param is {} and Omie answers
+    // "Nenhum parâmetro foi recebido em WS_PARAMS!". Sending the documented
+    // default makes the argument-less call — "today's position" — work.
+    param: (args) => ({ ...args, lApenasResumo: args.lApenasResumo ?? true }),
   },
   {
     name: "list_open_titles",

@@ -1,0 +1,195 @@
+{
+  "_comment": "Production 2026-09-27: every payment term of the account. 000 = à vista, 001 = 1 parcela, 999 = \"Informar o número de parcelas\" (nParcelas 999). No personal data.",
+  "tool": "list_payment_terms",
+  "args": {
+    "registros_por_pagina": 36
+  },
+  "response": {
+    "pagina": 1,
+    "total_de_paginas": 1,
+    "registros": 36,
+    "total_de_registros": 36,
+    "cadastros": [
+      {
+        "cDescricao": "A Vista",
+        "nCodigo": "000",
+        "nParcelas": 1
+      },
+      {
+        "cDescricao": "1 Parcela",
+        "nCodigo": "001",
+        "nParcelas": 1
+      },
+      {
+        "cDescricao": "2 Parcelas",
+        "nCodigo": "002",
+        "nParcelas": 2
+      },
+      {
+        "cDescricao": "3 Parcelas",
+        "nCodigo": "003",
+        "nParcelas": 3
+      },
+      {
+        "cDescricao": "4 Parcelas",
+        "nCodigo": "004",
+        "nParcelas": 4
+      },
+      {
+        "cDescricao": "5 Parcelas",
+        "nCodigo": "005",
+        "nParcelas": 5
+      },
+      {
+        "cDescricao": "6 Parcelas",
+        "nCodigo": "006",
+        "nParcelas": 6
+      },
+      {
+        "cDescricao": "7/14/21",
+        "nCodigo": "3R4",
+        "nParcelas": 3
+      },
+      {
+        "cDescricao": "Para 16 dias",
+        "nCodigo": "631",
+        "nParcelas": 1
+      },
+      {
+        "cDescricao": "Informar o número de parcelas",
+        "nCodigo": "999",
+        "nParcelas": 999
+      },
+      {
+        "cDescricao": "Para 7 dias",
+        "nCodigo": "A07",
+        "nParcelas": 1
+      },
+      {
+        "cDescricao": "Para 10 dias",
+        "nCodigo": "A10",
+        "nParcelas": 1
+      },
+      {
+        "cDescricao": "Para 15 dias",
+        "nCodigo": "A15",
+        "nParcelas": 1
+      },
+      {
+        "cDescricao": "Para 20 dias",
+        "nCodigo": "A20",
+        "nParcelas": 1
+      },
+      {
+        "cDescricao": "Para 21 dias",
+        "nCodigo": "A21",
+        "nParcelas": 1
+      },
+      {
+        "cDescricao": "Para 28 dias",
+        "nCodigo": "A28",
+        "nParcelas": 1
+      },
+      {
+        "cDescricao": "Para 45 dias",
+        "nCodigo": "A45",
+        "nParcelas": 1
+      },
+      {
+        "cDescricao": "Para 60 dias",
+        "nCodigo": "A60",
+        "nParcelas": 1
+      },
+      {
+        "cDescricao": "Para 90 dias",
+        "nCodigo": "A90",
+        "nParcelas": 1
+      },
+      {
+        "cDescricao": "Para 32 dias",
+        "nCodigo": "KDF",
+        "nParcelas": 1
+      },
+      {
+        "cDescricao": "Para 2 dias",
+        "nCodigo": "MS4",
+        "nParcelas": 1
+      },
+      {
+        "cDescricao": "Para 22 dias",
+        "nCodigo": "OCE",
+        "nParcelas": 1
+      },
+      {
+        "cDescricao": "Para 36 dias",
+        "nCodigo": "OGW",
+        "nParcelas": 1
+      },
+      {
+        "cDescricao": "30/60",
+        "nCodigo": "S01",
+        "nParcelas": 2
+      },
+      {
+        "cDescricao": "28/56",
+        "nCodigo": "S10",
+        "nParcelas": 2
+      },
+      {
+        "cDescricao": "30/60/90",
+        "nCodigo": "S18",
+        "nParcelas": 3
+      },
+      {
+        "cDescricao": "30/60/90/120",
+        "nCodigo": "S25",
+        "nParcelas": 4
+      },
+      {
+        "cDescricao": "A Vista/30",
+        "nCodigo": "S28",
+        "nParcelas": 2
+      },
+      {
+        "cDescricao": "A Vista/30/60",
+        "nCodigo": "S29",
+        "nParcelas": 3
+      },
+      {
+        "cDescricao": "A Vista/30/60/90",
+        "nCodigo": "S30",
+        "nParcelas": 4
+      },
+      {
+        "cDescricao": "A Vista/30/60/90/120/150",
+        "nCodigo": "S31",
+        "nParcelas": 6
+      },
+      {
+        "cDescricao": "A Vista/30/60/90/120",
+        "nCodigo": "S46",
+        "nParcelas": 5
+      },
+      {
+        "cDescricao": "28/56/84",
+        "nCodigo": "S52",
+        "nParcelas": 3
+      },
+      {
+        "cDescricao": "30/60/90/120/150/180",
+        "nCodigo": "T26",
+        "nParcelas": 6
+      },
+      {
+        "cDescricao": "30/60/90/120/150",
+        "nCodigo": "T41",
+        "nParcelas": 5
+      },
+      {
+        "cDescricao": "Para 30 dias",
+        "nCodigo": "T54",
+        "nParcelas": 1
+      }
+    ]
+  }
+}
