@@ -205,6 +205,21 @@ describe("mcp-omie", () => {
       expect(result.content[0].text).toContain("vValor is required");
     });
 
+    it("list_financial_movements restricts a status filter to titles unless told otherwise", async () => {
+      // Production, 2026-09-27: cNatureza=R + cStatus=ATRASADO without a record
+      // type returned the 2 overdue titles plus 7 RECEBIDO settlement rows.
+      const sent = async (args: Record<string, unknown>) => {
+        mockFetch.mockReset();
+        return (await call("list_financial_movements", args)).body.param[0];
+      };
+
+      expect(await sent({ cNatureza: "R", cStatus: "ATRASADO" })).toMatchObject({ cTpLancamento: "CR" });
+      expect(await sent({ cNatureza: "P", cStatus: "ATRASADO" })).toMatchObject({ cTpLancamento: "CP" });
+      expect(await sent({ cStatus: "ATRASADO" })).toMatchObject({ cTpLancamento: "CPCR" });
+      expect(await sent({ cNatureza: "R", cStatus: "RECEBIDO", cTpLancamento: "BXCR" })).toMatchObject({ cTpLancamento: "BXCR" });
+      expect(await sent({ cNatureza: "R" })).not.toHaveProperty("cTpLancamento");
+    });
+
     it("cancel_receipt accepts the settlement integration code as an alternative", async () => {
       const { body } = await call("cancel_receipt", { codigo_baixa_integracao: "BX-1" });
       expect(body.param[0]).toEqual({ codigo_baixa_integracao: "BX-1" });

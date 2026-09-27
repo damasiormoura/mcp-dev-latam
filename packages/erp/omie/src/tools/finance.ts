@@ -62,9 +62,10 @@ export const financeTools: OmieTool[] = [
       "List or search accounts receivable titles in Omie ERP (ListarContasReceber) by customer, status, " +
       "issue date or inclusion/change date. Returns codigo_lancamento_omie — the AR title ID every other " +
       "AR, boleto and PIX tool takes. Which AR read to use: one known title → get_account_receivable; " +
-      "due-date ranges, or AR and AP together → list_financial_movements (the only one with a due-date " +
-      "filter); the open-titles worklist for a day → list_open_titles. Note `filtrar_por_data_*` filters on " +
-      "inclusion/change date, while `filtrar_por_emissao_*` filters on the issue date.",
+      "due-date ranges, all overdue titles, or AR and AP together → list_financial_movements (the only " +
+      "one with a due-date filter); titles falling due on one given day → list_open_titles. Note " +
+      "`filtrar_por_data_*` filters on inclusion/change date, while `filtrar_por_emissao_*` filters on the " +
+      "issue date.",
     path: AR,
     call: "ListarContasReceber",
     inputSchema: {
@@ -427,8 +428,13 @@ export const financeTools: OmieTool[] = [
       "List unified financial movements (AP + AR + CC) in Omie ERP (ListarMovimentos). Each row carries " +
       "nCodTitulo (the title ID, = codigo_lancamento_omie) and, once settled, nCodBaixa (the settlement ID " +
       "cancel_receipt / cancel_payment take). This is also the only endpoint with " +
-      "a due-date filter (dDtVencDe / dDtVencAte). Note: with no date filter at all it returns only the " +
-      "last 30 days, so an empty result does not mean the company has no history.",
+      "a due-date filter (dDtVencDe / dDtVencAte), and the right one for \"which receivables are overdue\": " +
+      "cNatureza=R + cStatus=ATRASADO. By default Omie mixes titles with their settlements and bank-ledger " +
+      "rows (cGrupo CONTA_CORRENTE_*), applies cStatus to the titles only, and pages the two groups " +
+      "separately — so this tool sends cTpLancamento=CR / CP / CPCR (titles only) whenever cStatus is " +
+      "given without one; pass cTpLancamento yourself for settlements (BXCR / BXCP) or ledger rows (CC). " +
+      "With no date filter at all it returns only the last 30 days, so an empty result does not mean the " +
+      "company has no history.",
     path: "/financas/mf/",
     call: "ListarMovimentos",
     inputSchema: {
@@ -443,7 +449,14 @@ export const financeTools: OmieTool[] = [
         dDtEmisAte: date("Issue date to"),
         cNatureza: { type: "string", enum: ["P", "R"], description: "Nature: P=payable, R=receivable. Omit for both" },
         cStatus: { type: "string", description: "Status: CANCELADO, RECEBIDO, PAGO, VENCEHOJE, AVENCER, ATRASADO, EMABERTO, PAGTOPARCIAL" },
-        cTpLancamento: { type: "string", description: "Record type: CP=payables, CR=receivables, CC=bank ledger" },
+        cTpLancamento: {
+          type: "string",
+          enum: ["CP", "CR", "CPCR", "BX", "BXCP", "BXCR", "CC", "CCE", "CCS", "CCT", "PV", "POS", "PPV"],
+          description:
+            "Record type. Titles: CP=payables, CR=receivables, CPCR=both. Settlements (baixas): BX=both, " +
+            "BXCP, BXCR. Bank ledger: CC=all, CCE=in, CCS=out, CCT=transfers. Forecasts: PV=service " +
+            "contracts, POS=service orders, PPV=sales orders. Defaults to titles when cStatus is set",
+        },
         nCodCliente: { type: "number", description: `Filter by ${ID.customer}` },
         cCPFCNPJCliente: { type: "string", description: "Filter by customer / supplier CPF / CNPJ" },
         nCodCC: { type: "number", description: `Filter by ${ID.bankAccount}` },
@@ -451,7 +464,17 @@ export const financeTools: OmieTool[] = [
         cExibirDepartamentos: flag("Include the department split"),
       },
     },
-    param: withPaging("n"),
+    param: (args) => {
+      const param = withPaging("n")(args) as Record<string, unknown>;
+      // Seen in production 2026-09-27: cNatureza=R + cStatus=ATRASADO returned
+      // the 2 overdue titles plus 7 RECEBIDO settlement rows, on a second page.
+      // cStatus is a title filter, so without a record type it is answering a
+      // different question than the one asked.
+      if (args.cStatus !== undefined && args.cTpLancamento === undefined) {
+        param.cTpLancamento = args.cNatureza === "R" ? "CR" : args.cNatureza === "P" ? "CP" : "CPCR";
+      }
+      return param;
+    },
   },
   {
     name: "get_bank_statement",
@@ -491,16 +514,19 @@ export const financeTools: OmieTool[] = [
   {
     name: "list_open_titles",
     description:
-      "List the titles still open in Omie ERP (ObterListaEmAberto) — the collections and payables " +
-      "worklist. cTipo (required) selects P (payables) or R (receivables). Each row's title ID is nIdTitulo " +
-      "(= codigo_lancamento_omie).",
+      "List the open titles falling due on ONE day in Omie ERP (ObterListaEmAberto) — the dashboard's " +
+      "\"to collect / to pay today\" list, NOT every open or overdue title: a title that fell due on an " +
+      "earlier day does not appear (on a weekend dDia it shows the last business day). Its nDiasAtraso " +
+      "comes back 0 even for overdue titles. For all overdue receivables use list_financial_movements " +
+      "with cNatureza=R and cStatus=ATRASADO. cTipo (required) selects P (payables) or R (receivables); " +
+      "each row's title ID is nIdTitulo (= codigo_lancamento_omie).",
     path: "/financas/resumo/",
     call: "ObterListaEmAberto",
     inputSchema: {
       type: "object",
       properties: {
         ...pagingSchema("n"),
-        dDia: date("Date to list the open titles for (Omie: \"data de registro\"); defaults to today"),
+        dDia: date("The due date to list (Omie calls it \"data de registro\"); defaults to today"),
         cTipo: { type: "string", enum: ["P", "R"], description: "P=payables, R=receivables — required" },
         nCodCliente: { type: "number", description: `Filter by ${ID.customer}` },
         cNomeCliente: { type: "string", description: "Filter by customer / supplier name" },

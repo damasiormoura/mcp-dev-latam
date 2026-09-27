@@ -157,7 +157,7 @@ client injects server instructions.
 | `list_financial_movements` | `ListarMovimentos` | List unified financial movements (AP + AR + CC) in Omie ERP |
 | `get_bank_statement` | `ListarExtrato` | Retrieve a bank account statement (extrato) for a period from Omie ERP — every credit and debit with the running balance, as reconciled in Omie |
 | `get_finance_summary` | `ObterResumoFinancas` | Get the consolidated finance position for a day in Omie ERP — balances and totals rather than a title-by-title listing |
-| `list_open_titles` | `ObterListaEmAberto` | List the titles still open in Omie ERP — the collections and payables worklist. cTipo (required) selects P (payables) or R (receivables) |
+| `list_open_titles` | `ObterListaEmAberto` | List the open titles falling due on ONE day in Omie ERP — the dashboard's "to collect / to pay today" list, NOT every open or overdue title: a title that fell due on an earlier day does not appear (on a weekend dDia it shows the last business day) |
 | `cancel_account_receivable` | `CancelarContaReceber` | Cancel an accounts receivable title in Omie ERP — status_titulo becomes CANCELADO; the invoice (NF-e / NFS-e) it came from is NOT touched |
 
 ### Billing — PIX & boleto (9)
