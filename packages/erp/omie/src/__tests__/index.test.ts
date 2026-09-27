@@ -220,6 +220,20 @@ describe("mcp-omie", () => {
       expect(await sent({ cNatureza: "R" })).not.toHaveProperty("cTpLancamento");
     });
 
+    it("list_products does not let Omie's PDV-only default hide the catalogue", async () => {
+      // Production, 2026-09-27: with filtrar_apenas_omiepdv absent, ListarProdutos
+      // returned 0 of 213 products.
+      expect((await call("list_products", {})).body.param[0]).toMatchObject({ filtrar_apenas_omiepdv: "N", pagina: 1 });
+      mockFetch.mockReset();
+      expect((await call("list_products", { filtrar_apenas_omiepdv: "S" })).body.param[0]).toMatchObject({ filtrar_apenas_omiepdv: "S" });
+    });
+
+    it("no payment-term description calls 999 a single installment", async () => {
+      const text = JSON.stringify((await loadTools()).map((t) => [t.description, t.inputSchema]));
+      expect(text).not.toMatch(/999[^"]*single[- ]installment/i);
+      expect(text).toContain("informar o número de parcelas");
+    });
+
     it("cancel_receipt accepts the settlement integration code as an alternative", async () => {
       const { body } = await call("cancel_receipt", { codigo_baixa_integracao: "BX-1" });
       expect(body.param[0]).toEqual({ codigo_baixa_integracao: "BX-1" });

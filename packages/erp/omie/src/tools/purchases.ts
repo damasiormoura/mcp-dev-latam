@@ -1,4 +1,4 @@
-import { OmieTool, date, notes, ID } from "./types.js";
+import { OmieTool, date, notes, ID, PAYMENT_TERM } from "./types.js";
 
 const PATH = "/produtos/pedidocompra/";
 
@@ -22,8 +22,8 @@ export const purchaseTools: OmieTool[] = [
             nCodFor: { type: "number", description: `Supplier: ${ID.customer} (suppliers are customer records)` },
             cCodIntFor: { type: "string", description: "Supplier integration code (alternative to nCodFor)" },
             cCnpjCpfFor: { type: "string", description: "Supplier CNPJ / CPF (alternative to nCodFor and cCodIntFor)" },
-            cCodParc: { type: "string", description: "Payment term code, e.g. \"999\" for a single installment" },
-            nQtdeParc: { type: "number", description: "Number of installments" },
+            cCodParc: { type: "string", description: PAYMENT_TERM },
+            nQtdeParc: { type: "number", description: "Number of installments — required with cCodParc \"999\"" },
             cCodCateg: { type: "string", description: "Purchase category code (list_categories)" },
             nCodCC: { type: "number", description: ID.bankAccount },
             nCodProj: { type: "number", description: "Project ID" },

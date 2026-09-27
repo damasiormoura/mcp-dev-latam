@@ -1,4 +1,4 @@
-import { OmieTool, listOnly, pagingSchema, withPaging, date, flag, orderingFilters, notes, ID } from "./types.js";
+import { OmieTool, listOnly, pagingSchema, withPaging, date, flag, orderingFilters, notes, ID, PAYMENT_TERM } from "./types.js";
 
 const OS = "/servicos/os/";
 const OSP = "/servicos/osp/";
@@ -58,8 +58,8 @@ const osHeader = {
   cNumOS: { type: "string", description: "OS number shown to the customer; generated when omitted" },
   dDtPrevisao: date("Expected date"),
   cEtapa: { type: "string", description: "Stage code: 10, 20, 30, 40, 50=Faturar, 60=Faturado" },
-  cCodParc: { type: "string", description: "Payment term code, e.g. \"999\" for a single installment" },
-  nQtdeParc: { type: "number", description: "Number of installments" },
+  cCodParc: { type: "string", description: PAYMENT_TERM },
+  nQtdeParc: { type: "number", description: "Number of installments — required with cCodParc \"999\"" },
   nCodVend: { type: "number", description: "Salesperson ID" },
   nCodCtr: { type: "number", description: "Contract ID — attaches this OS to an existing contract" },
 } as const;
