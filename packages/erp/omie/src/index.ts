@@ -45,7 +45,7 @@ import {
 } from "@modelcontextprotocol/sdk/types.js";
 
 import { omieRequest, validateArgs, CREDENTIALS_CONFIGURED } from "./omie.js";
-import { TOOLS, findTool, INSTRUCTIONS } from "./tools/index.js";
+import { TOOLS, findTool, INSTRUCTIONS, annotationsFor } from "./tools/index.js";
 import { ToolRefusal } from "./tools/types.js";
 import { type Caller, attributionText, buildEntry, closeAuditLog, currentCaller, record, reopenAuditLog, stamp, withCaller } from "./audit.js";
 
@@ -55,7 +55,7 @@ const DEMO_MODE = process.argv.includes("--demo") || process.env.MCP_DEMO === "t
 
 // Curated, realistic responses — shaped from the actual Omie response *type*
 // fields (ConsultarContaPagar's own conta_pagar_lancar_pagamento_resposta,
-// GerarPix's GerarPixResponse, and so on), not invented. 22 of 83 tools have
+// GerarPix's GerarPixResponse, and so on), not invented. 22 of 84 tools have
 // one; the rest fall back to echoing the validated arguments (see
 // demoFallback below) rather than a shape this server hasn't verified against
 // the API — extending this further means pulling more response *types* from
@@ -175,7 +175,12 @@ function buildServer(): Server {
   );
 
   s.setRequestHandler(ListToolsRequestSchema, async () => ({
-    tools: TOOLS.map(({ name, description, inputSchema }) => ({ name, description, inputSchema })),
+    tools: TOOLS.map((tool) => ({
+      name: tool.name,
+      description: tool.description,
+      inputSchema: tool.inputSchema,
+      annotations: annotationsFor(tool),
+    })),
   }));
 
   s.setRequestHandler(CallToolRequestSchema, async (request) => {

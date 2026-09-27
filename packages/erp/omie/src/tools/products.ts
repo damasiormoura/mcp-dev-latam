@@ -1,4 +1,4 @@
-import { OmieTool, pagingSchema, withPaging, flag, notes } from "./types.js";
+import { OmieTool, pagingSchema, withPaging, flag, notes, ID } from "./types.js";
 
 const PATH = "/geral/produtos/";
 
@@ -22,7 +22,10 @@ const productFields = {
 export const productTools: OmieTool[] = [
   {
     name: "list_products",
-    description: "List products from Omie ERP",
+    description:
+      "List products in Omie ERP (ListarProdutos). Returns codigo_produto, the ID other tools take as " +
+      "codigo_produto, id_prod, nCodProd or idProd. To look up one product by SKU or integration code use " +
+      "get_product instead of paging.",
     path: PATH,
     call: "ListarProdutos",
     inputSchema: {
@@ -37,7 +40,9 @@ export const productTools: OmieTool[] = [
   },
   {
     name: "create_product",
-    description: "Create a product in Omie ERP",
+    description:
+      "Create a product in Omie ERP (IncluirProduto); returns codigo_produto. Fails when the SKU (codigo) " +
+      "already exists — prefer upsert_product when it may.",
     path: PATH,
     call: "IncluirProduto",
     inputSchema: {
@@ -49,13 +54,13 @@ export const productTools: OmieTool[] = [
   },
   {
     name: "get_product",
-    description: "Consult a single product in Omie ERP by Omie ID, integration code or SKU",
+    description: "Consult a single product in Omie ERP (ConsultarProduto) by Omie ID, integration code or SKU",
     path: PATH,
     call: "ConsultarProduto",
     inputSchema: {
       type: "object",
       properties: {
-        codigo_produto: { type: "number", description: "Omie product ID" },
+        codigo_produto: { type: "number", description: ID.product },
         codigo_produto_integracao: { type: "string", description: "Integration code (alternative)" },
         codigo: { type: "string", description: "Product code / SKU (alternative)" },
       },
@@ -65,14 +70,14 @@ export const productTools: OmieTool[] = [
   {
     name: "update_product",
     description:
-      "Update an existing product in Omie ERP. Identify the record with codigo_produto, " +
+      "Update an existing product in Omie ERP (AlterarProduto). Identify the record with codigo_produto, " +
       "codigo_produto_integracao or codigo; only the fields you send are changed.",
     path: PATH,
     call: "AlterarProduto",
     inputSchema: {
       type: "object",
       properties: {
-        codigo_produto: { type: "number", description: "Omie product ID" },
+        codigo_produto: { type: "number", description: ID.product },
         ...productFields,
       },
       anyOfRequired: ["codigo_produto", "codigo_produto_integracao", "codigo"],

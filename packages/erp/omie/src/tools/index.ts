@@ -1,4 +1,5 @@
 import { OmieTool } from "./types.js";
+import { isReadOnlyMethod } from "../omie.js";
 import { customerTools } from "./customers.js";
 import { productTools } from "./products.js";
 import { salesTools } from "./sales.js";
@@ -35,9 +36,15 @@ export const INSTRUCTIONS =
   "filtrar_por_data_de / filtrar_por_data_ate (they track creation/alteration time); for one " +
   "record use the get_* tool; for a customer by CNPJ/CPF use list_customers with " +
   "clientesFiltro.cnpj_cpf. WRITES (create_*, update_*, upsert_*, pay_*, receive_*, cancel_*, " +
-  "invoice_*, change_*_stage, delete_*) change the production ERP under the caller's name: " +
+  "invoice_*, change_*_stage, delete_*; create_invoice is the exception, a read) change the " +
+  "production ERP under the caller's name: " +
   "read the record first, prefer upsert_* over create_* when it may already exist, and confirm " +
-  "with the person before settling, cancelling or issuing anything.";
+  "with the person before settling, cancelling or issuing anything. Omie's reply text is not proof of " +
+  "the effect (CancelarContaReceber answers \"Boleto cancelado\" when it cancels the title): confirm a " +
+  "write by reading the record's status. Right after a write a get_* may still show the old state for " +
+  "a few seconds, and an identical call repeated at once is refused as REDUNDANT — confirm through the " +
+  "listing tool (get_financial, list_orders, ...), wait the seconds Omie asks before repeating, never " +
+  "loop, and never re-send a write because a read looks unchanged.";
 
 /**
  * Appended to every read tool. Repeated on purpose, not only in `INSTRUCTIONS`:
@@ -48,22 +55,50 @@ const LIVE_DATA =
   " Live ERP data: the result is a snapshot (read_at) — call again before stating the current " +
   "state, even if already called in this conversation.";
 
-function isRead(tool: OmieTool): boolean {
-  return /^(list_|get_)/.test(tool.name);
+/**
+ * A read is decided by the Omie method as well as the name: create_invoice is
+ * ConsultarNF — a read with a write's name, kept for compatibility — and it
+ * must still carry the live-data clause and the read-only annotation.
+ */
+export function isRead(tool: OmieTool): boolean {
+  return /^(list_|get_)/.test(tool.name) || isReadOnlyMethod(tool.call);
 }
 
-export const TOOLS: OmieTool[] = [
-  ...customerTools,
-  ...productTools,
-  ...salesTools,
-  ...purchaseTools,
-  ...serviceTools,
-  ...financeTools,
-  ...cancellationTools,
-  ...billingTools,
-  ...stockTools,
-  ...registryTools,
-].map((tool) => (isRead(tool) ? { ...tool, description: tool.description + LIVE_DATA } : tool));
+/**
+ * MCP tool annotations, so a client can tell a read from a write — and a
+ * write that only adds (a new order, a settlement, an NF-e) from one that
+ * changes or removes what exists — before calling. Derived from the Omie
+ * method, which is the one naming this codebase keeps consistent.
+ */
+export function annotationsFor(tool: OmieTool) {
+  const readOnly = isRead(tool);
+  return {
+    readOnlyHint: readOnly,
+    destructiveHint: !readOnly && !/^(Incluir|Gerar|Lancar|Faturar)/.test(tool.call),
+    openWorldHint: true,
+  };
+}
+
+/**
+ * The domains, in catalogue order. Also what the README's tool tables are
+ * generated from (src/__tests__/readme.test.ts), so a description changed
+ * here cannot quietly disagree with the one documented there.
+ */
+export const TOOL_GROUPS: { title: string; tools: OmieTool[] }[] = [
+  { title: "Customers", tools: customerTools },
+  { title: "Products", tools: productTools },
+  { title: "Sales orders & invoices", tools: salesTools },
+  { title: "Purchasing", tools: purchaseTools },
+  { title: "Services (OS / NFS-e)", tools: serviceTools },
+  { title: "Finance — receivables, payables, ledger", tools: [...financeTools, ...cancellationTools] },
+  { title: "Billing — PIX & boleto", tools: billingTools },
+  { title: "Stock", tools: stockTools },
+  { title: "Supporting registries", tools: registryTools },
+];
+
+export const TOOLS: OmieTool[] = TOOL_GROUPS.flatMap((g) => g.tools).map((tool) =>
+  isRead(tool) ? { ...tool, description: tool.description + LIVE_DATA } : tool
+);
 
 /** Duplicate tool names would silently shadow each other at dispatch. */
 const seen = new Set<string>();

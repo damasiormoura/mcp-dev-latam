@@ -124,6 +124,34 @@ export function listOnly(style: PagingStyle): Pick<OmieTool, "inputSchema" | "pa
   };
 }
 
+/**
+ * Omie names the same key differently on almost every endpoint — one AR title
+ * is codigo_lancamento_omie, nCodTitulo, codigo_lancamento, chave_lancamento
+ * or nIdTitulo depending on who is asking. The field names have to stay as
+ * each endpoint spells them; what these do is make every property description
+ * say where the value comes from and which other names it goes by, so an
+ * agent holding one of them knows it already has the other.
+ */
+export const ID = {
+  arTitle:
+    "AR title ID — codigo_lancamento_omie in get_financial / get_account_receivable (also returned as " +
+    "nCodTitulo by list_financial_movements and nIdTitulo by list_open_titles)",
+  apTitle:
+    "AP title ID — codigo_lancamento_omie in list_accounts_payable / get_account_payable (also returned as " +
+    "nCodTitulo by list_financial_movements and nIdTitulo by list_open_titles)",
+  arSettlement:
+    "AR settlement (baixa) ID — codigo_baixa in receive_account_receivable's response, nCodBaixa in " +
+    "list_financial_movements",
+  apSettlement:
+    "AP settlement (baixa) ID — codigo_baixa in pay_account_payable's response, nCodBaixa in " +
+    "list_financial_movements",
+  bankAccount: "Bank account ID — nCodCC from get_bank_accounts",
+  customer: "Omie customer / supplier ID — codigo_cliente_omie from list_customers",
+  product: "Omie product ID — codigo_produto from list_products",
+  salesOrder: "Omie sales order ID — codigo_pedido from list_orders / create_order",
+  serviceOrder: "Omie service order ID — nCodOS from list_service_orders / create_service_order",
+} as const;
+
 /** A DD/MM/YYYY date property. */
 export function date(description: string) {
   return { type: "string", description: `${description} (DD/MM/YYYY)` };

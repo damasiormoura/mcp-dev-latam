@@ -1,4 +1,4 @@
-import { OmieTool, listOnly, pagingSchema, withPaging, date, flag, notes } from "./types.js";
+import { OmieTool, listOnly, pagingSchema, withPaging, date, flag, notes, ID } from "./types.js";
 
 const AR = "/financas/contareceber/";
 const AP = "/financas/contapagar/";
@@ -7,12 +7,12 @@ const CC = "/financas/contacorrentelancamentos/";
 /** Writable fields shared by the AR and AP title endpoints. */
 const titleFields = {
   codigo_lancamento_integracao: { type: "string", description: "Integration code for the title (unique)" },
-  codigo_cliente_fornecedor: { type: "number", description: "Omie customer (AR) or supplier (AP) ID" },
+  codigo_cliente_fornecedor: { type: "number", description: `Customer (AR) or supplier (AP): ${ID.customer}` },
   data_vencimento: date("Due date"),
   valor_documento: { type: "number", description: "Document value in BRL" },
   codigo_categoria: { type: "string", description: "Category code from the chart of accounts (list_categories)" },
   data_previsao: date("Expected settlement date"),
-  id_conta_corrente: { type: "number", description: "Bank account ID (get_bank_accounts)" },
+  id_conta_corrente: { type: "number", description: ID.bankAccount },
   data_emissao: date("Issue date"),
   numero_documento: { type: "string", description: "Document / invoice number" },
   numero_parcela: { type: "string", description: "Installment marker, e.g. \"001/001\"" },
@@ -23,7 +23,10 @@ const titleFields = {
 
 /** Identifies a title by Omie ID or integration code. */
 const titleKey = {
-  codigo_lancamento_omie: { type: "number", description: "Omie title ID" },
+  codigo_lancamento_omie: {
+    type: "number",
+    description: "Omie title ID — codigo_lancamento_omie from get_financial (AR) or list_accounts_payable (AP); nCodTitulo in list_financial_movements is the same value",
+  },
   codigo_lancamento_integracao: { type: "string", description: "Integration code (alternative)" },
 } as const;
 const titleKeyRequired = ["codigo_lancamento_omie", "codigo_lancamento_integracao"] as const;
@@ -36,11 +39,11 @@ const titleKeyRequired = ["codigo_lancamento_omie", "codigo_lancamento_integraca
 function settlementFields(kind: "receipt" | "payment") {
   const verb = kind === "receipt" ? "received" : "paid";
   return {
-    codigo_lancamento: { type: "number", description: "Omie title ID to settle" },
+    codigo_lancamento: { type: "number", description: "Title ID to settle — the same value as codigo_lancamento_omie" },
     codigo_lancamento_integracao: { type: "string", description: "Title integration code (alternative to codigo_lancamento)" },
     codigo_baixa: { type: "number", description: "Omie-assigned settlement ID" },
     codigo_baixa_integracao: { type: "string", description: "Settlement integration code — this is what an integration supplies" },
-    codigo_conta_corrente: { type: "number", description: `Bank account ID the amount was ${verb} into` },
+    codigo_conta_corrente: { type: "number", description: `${ID.bankAccount} — the account the amount was ${verb} into` },
     valor: { type: "number", description: `Amount ${verb} in BRL` },
     juros: { type: "number", description: "Interest amount" },
     desconto: { type: "number", description: "Discount amount" },
@@ -56,9 +59,12 @@ export const financeTools: OmieTool[] = [
   {
     name: "get_financial",
     description:
-      "List accounts receivable from Omie ERP. Filters are the documented `filtrar_*` fields — note " +
-      "that `filtrar_por_data_*` filters on inclusion/change date, while `filtrar_por_emissao_*` filters " +
-      "on the issue date.",
+      "List or search accounts receivable titles in Omie ERP (ListarContasReceber) by customer, status, " +
+      "issue date or inclusion/change date. Returns codigo_lancamento_omie — the AR title ID every other " +
+      "AR, boleto and PIX tool takes. Which AR read to use: one known title → get_account_receivable; " +
+      "due-date ranges, or AR and AP together → list_financial_movements (the only one with a due-date " +
+      "filter); the open-titles worklist for a day → list_open_titles. Note `filtrar_por_data_*` filters on " +
+      "inclusion/change date, while `filtrar_por_emissao_*` filters on the issue date.",
     path: AR,
     call: "ListarContasReceber",
     inputSchema: {
@@ -71,7 +77,7 @@ export const financeTools: OmieTool[] = [
         filtrar_por_data_ate: date("Inclusion / change date to"),
         filtrar_por_status: { type: "string", description: "Title status (RECEBIDO, ATRASADO, AVENCER, VENCEHOJE, EMABERTO, CANCELADO, ...)" },
         filtrar_apenas_titulos_em_aberto: flag("Only titles still open"),
-        filtrar_cliente: { type: "number", description: "Filter by customer ID" },
+        filtrar_cliente: { type: "number", description: `Filter by ${ID.customer}` },
         filtrar_por_cpf_cnpj: { type: "string", description: "Filter by customer CPF / CNPJ" },
         filtrar_conta_corrente: { type: "number", description: "Filter by bank account ID" },
         filtrar_por_projeto: { type: "number", description: "Filter by project ID" },
@@ -107,7 +113,9 @@ export const financeTools: OmieTool[] = [
   },
   {
     name: "update_account_receivable",
-    description: "Update an accounts receivable title in Omie ERP (AlterarContaReceber)",
+    description:
+      "Update an accounts receivable title in Omie ERP (AlterarContaReceber). " +
+      "Sending observacao REPLACES the notes the title has — read it first and send the old text plus the addition.",
     path: AR,
     call: "AlterarContaReceber",
     inputSchema: {
@@ -122,7 +130,10 @@ export const financeTools: OmieTool[] = [
     description:
       "Settle / record a receipt (baixa) against an AR title in Omie ERP (LancarRecebimento). Identify " +
       "the title with codigo_lancamento or codigo_lancamento_integracao — without one of them the " +
-      "settlement has no target.",
+      "settlement has no target. Moves money: the title becomes RECEBIDO (or partially received) and a " +
+      "bank-ledger entry is posted. Read the title first to check it is still open, and never repeat the " +
+      "call after an error — re-read instead. Keep codigo_baixa from the response: it is what cancel_receipt " +
+      "needs to undo this.",
     path: AR,
     call: "LancarRecebimento",
     inputSchema: {
@@ -139,32 +150,38 @@ export const financeTools: OmieTool[] = [
     description:
       "Undo a receipt (baixa) previously settled on an AR title in Omie ERP (CancelarRecebimento) — the " +
       "title goes back to open. This does not cancel the title: to do that afterwards, use " +
-      "cancel_account_receivable. codigo_baixa is the settlement ID returned by receive_account_receivable.",
+      "cancel_account_receivable. codigo_baixa comes from receive_account_receivable's response or from " +
+      "list_financial_movements (nCodBaixa).",
     path: AR,
     call: "CancelarRecebimento",
     inputSchema: {
       type: "object",
-      properties: { codigo_baixa: { type: "number", description: "Omie settlement ID to cancel" } },
-      required: ["codigo_baixa"],
+      properties: {
+        codigo_baixa: { type: "number", description: ID.arSettlement },
+        codigo_baixa_integracao: { type: "string", description: "Settlement integration code, if one was given (alternative)" },
+      },
+      anyOfRequired: ["codigo_baixa", "codigo_baixa_integracao"],
     },
   },
 
   // --- Accounts payable ------------------------------------------------------
   {
     name: "create_account_payable",
-    description: "Create an accounts payable (AP) entry in Omie ERP",
+    description:
+      "Create an accounts payable (AP) title in Omie ERP (IncluirContaPagar). Returns codigo_lancamento_omie. " +
+      "Check first with list_accounts_payable that the bill is not already registered.",
     path: AP,
     call: "IncluirContaPagar",
     inputSchema: {
       type: "object",
       properties: {
         codigo_lancamento_integracao: { type: "string", description: "Integration code (unique)" },
-        codigo_cliente_fornecedor: { type: "number", description: "Omie supplier ID" },
+        codigo_cliente_fornecedor: { type: "number", description: `Supplier: ${ID.customer} (suppliers are customer records)` },
         data_vencimento: date("Due date"),
         valor_documento: { type: "number", description: "Document value in BRL" },
         codigo_categoria: { type: "string", description: "Category code (chart of accounts)" },
         data_previsao: date("Expected payment date"),
-        id_conta_corrente: { type: "number", description: "Bank account ID" },
+        id_conta_corrente: { type: "number", description: ID.bankAccount },
         numero_documento: { type: "string", description: "Document/invoice number" },
         observacao: { type: "string", description: "Notes" },
       },
@@ -175,7 +192,8 @@ export const financeTools: OmieTool[] = [
   {
     name: "list_accounts_payable",
     description:
-      "List accounts payable (AP) titles in Omie ERP. This endpoint has no due-date filter — to select " +
+      "List accounts payable (AP) titles in Omie ERP (ListarContasPagar); returns codigo_lancamento_omie " +
+      "per title. This endpoint has no due-date filter — to select " +
       "titles by vencimento use list_financial_movements, which accepts dDtVencDe / dDtVencAte.",
     path: AP,
     call: "ListarContasPagar",
@@ -199,14 +217,16 @@ export const financeTools: OmieTool[] = [
   },
   {
     name: "get_account_payable",
-    description: "Consult a single accounts payable title in Omie ERP",
+    description: "Consult a single accounts payable title in Omie ERP (ConsultarContaPagar)",
     path: AP,
     call: "ConsultarContaPagar",
     inputSchema: { type: "object", properties: titleKey, anyOfRequired: titleKeyRequired },
   },
   {
     name: "update_account_payable",
-    description: "Update an accounts payable title in Omie ERP (AlterarContaPagar)",
+    description:
+      "Update an accounts payable title in Omie ERP (AlterarContaPagar). " +
+      "Sending observacao REPLACES the notes the title has — read it first and send the old text plus the addition.",
     path: AP,
     call: "AlterarContaPagar",
     inputSchema: {
@@ -222,7 +242,8 @@ export const financeTools: OmieTool[] = [
       "Settle / record payment (baixa) for an AP title in Omie ERP (LancarPagamento). Identify the title " +
       "with codigo_lancamento or codigo_lancamento_integracao — without one of them the settlement has " +
       "no target. Supply your own reference in codigo_baixa_integracao; codigo_baixa is the integer Omie " +
-      "assigns.",
+      "assigns. Moves money: the title becomes PAGO (or partially paid) and a bank-ledger entry is posted. " +
+      "Never repeat the call after an error — re-read the title instead. Undo with cancel_payment.",
     path: AP,
     call: "LancarPagamento",
     inputSchema: {
@@ -235,13 +256,19 @@ export const financeTools: OmieTool[] = [
   },
   {
     name: "cancel_payment",
-    description: "Cancel a payment previously settled on an AP title in Omie ERP (CancelarPagamento)",
+    description:
+      "Undo a payment (baixa) previously settled on an AP title in Omie ERP (CancelarPagamento) — the title " +
+      "goes back to open. codigo_baixa comes from pay_account_payable's response or from " +
+      "list_financial_movements (nCodBaixa).",
     path: AP,
     call: "CancelarPagamento",
     inputSchema: {
       type: "object",
-      properties: { codigo_baixa: { type: "number", description: "Omie settlement ID to cancel" } },
-      required: ["codigo_baixa"],
+      properties: {
+        codigo_baixa: { type: "number", description: ID.apSettlement },
+        codigo_baixa_integracao: { type: "string", description: "Settlement integration code, if one was given (alternative)" },
+      },
+      anyOfRequired: ["codigo_baixa", "codigo_baixa_integracao"],
     },
   },
 
@@ -262,7 +289,7 @@ export const financeTools: OmieTool[] = [
           type: "object",
           description: "Entry header — accepts only these three fields",
           properties: {
-            nCodCC: { type: "number", description: "Bank account ID (get_bank_accounts)" },
+            nCodCC: { type: "number", description: ID.bankAccount },
             dDtLanc: date("Entry date"),
             nValorLanc: { type: "number", description: "Entry amount in BRL; negative for an outflow" },
           },
@@ -275,7 +302,7 @@ export const financeTools: OmieTool[] = [
             cCodCateg: { type: "string", description: "Category code from the chart of accounts (list_categories)" },
             cTipo: { type: "string", description: "Document type: DIN=dinheiro, BOL=boleto, CRT=cartão, CHQ=cheque, CON=convênio, ADI=adiantamento, ..." },
             cNumDoc: { type: "string", description: "Document number" },
-            nCodCliente: { type: "number", description: "Customer / payee ID" },
+            nCodCliente: { type: "number", description: `Customer / payee: ${ID.customer}` },
             nCodProjeto: { type: "number", description: "Project ID" },
             cObs: { type: "string", description: "Notes — this is where a free-text history line goes" },
             aCodCateg: {
@@ -321,7 +348,10 @@ export const financeTools: OmieTool[] = [
   },
   {
     name: "list_cash_entries",
-    description: "List bank account ledger entries in Omie ERP (ListarLancCC)",
+    description:
+      "List manual bank account ledger entries in Omie ERP (ListarLancCC) — the entries create_cash_entry " +
+      "makes, keyed by nCodLanc. Settlements of AR/AP titles are not here: see list_financial_movements, " +
+      "or get_bank_statement for the account as the bank sees it.",
     path: CC,
     call: "ListarLancCC",
     inputSchema: {
@@ -339,7 +369,9 @@ export const financeTools: OmieTool[] = [
   },
   {
     name: "update_cash_entry",
-    description: "Update a bank account ledger entry in Omie ERP (AlterarLancCC)",
+    description:
+      "Update a manual bank account ledger entry in Omie ERP (AlterarLancCC). Sending detalhes.cObs " +
+      "REPLACES the entry's notes — read it first and send the old text plus the addition.",
     path: CC,
     call: "AlterarLancCC",
     inputSchema: {
@@ -373,7 +405,9 @@ export const financeTools: OmieTool[] = [
   },
   {
     name: "delete_cash_entry",
-    description: "Delete a bank account ledger entry in Omie ERP (ExcluirLancCC)",
+    description:
+      "Permanently delete a manual bank account ledger entry in Omie ERP (ExcluirLancCC) — irreversible. " +
+      "Not for undoing a title settlement: that is cancel_receipt (AR) or cancel_payment (AP).",
     path: CC,
     call: "ExcluirLancCC",
     inputSchema: {
@@ -390,7 +424,9 @@ export const financeTools: OmieTool[] = [
   {
     name: "list_financial_movements",
     description:
-      "List unified financial movements (AP + AR + CC) in Omie ERP. This is also the only endpoint with " +
+      "List unified financial movements (AP + AR + CC) in Omie ERP (ListarMovimentos). Each row carries " +
+      "nCodTitulo (the title ID, = codigo_lancamento_omie) and, once settled, nCodBaixa (the settlement ID " +
+      "cancel_receipt / cancel_payment take). This is also the only endpoint with " +
       "a due-date filter (dDtVencDe / dDtVencAte). Note: with no date filter at all it returns only the " +
       "last 30 days, so an empty result does not mean the company has no history.",
     path: "/financas/mf/",
@@ -408,9 +444,9 @@ export const financeTools: OmieTool[] = [
         cNatureza: { type: "string", enum: ["P", "R"], description: "Nature: P=payable, R=receivable. Omit for both" },
         cStatus: { type: "string", description: "Status: CANCELADO, RECEBIDO, PAGO, VENCEHOJE, AVENCER, ATRASADO, EMABERTO, PAGTOPARCIAL" },
         cTpLancamento: { type: "string", description: "Record type: CP=payables, CR=receivables, CC=bank ledger" },
-        nCodCliente: { type: "number", description: "Filter by customer / supplier ID" },
+        nCodCliente: { type: "number", description: `Filter by ${ID.customer}` },
         cCPFCNPJCliente: { type: "string", description: "Filter by customer / supplier CPF / CNPJ" },
-        nCodCC: { type: "number", description: "Filter by bank account ID" },
+        nCodCC: { type: "number", description: `Filter by ${ID.bankAccount}` },
         cCodCateg: { type: "string", description: "Filter by category code" },
         cExibirDepartamentos: flag("Include the department split"),
       },
@@ -419,13 +455,15 @@ export const financeTools: OmieTool[] = [
   },
   {
     name: "get_bank_statement",
-    description: "Retrieve bank account statement (extrato) for a period from Omie ERP",
+    description:
+      "Retrieve a bank account statement (extrato) for a period from Omie ERP (ListarExtrato) — every credit " +
+      "and debit with the running balance, as reconciled in Omie.",
     path: "/financas/extrato/",
     call: "ListarExtrato",
     inputSchema: {
       type: "object",
       properties: {
-        nCodCC: { type: "number", description: "Bank account ID" },
+        nCodCC: { type: "number", description: ID.bankAccount },
         cCodIntCC: { type: "string", description: "Bank account integration code (alternative to nCodCC)" },
         dPeriodoInicial: date("Start date"),
         dPeriodoFinal: date("End date"),
@@ -453,19 +491,21 @@ export const financeTools: OmieTool[] = [
   {
     name: "list_open_titles",
     description:
-      "List the titles still open on a given day in Omie ERP (ObterListaEmAberto) — the collections and " +
-      "payables worklist. cTipo selects P (payables) or R (receivables).",
+      "List the titles still open in Omie ERP (ObterListaEmAberto) — the collections and payables " +
+      "worklist. cTipo (required) selects P (payables) or R (receivables). Each row's title ID is nIdTitulo " +
+      "(= codigo_lancamento_omie).",
     path: "/financas/resumo/",
     call: "ObterListaEmAberto",
     inputSchema: {
       type: "object",
       properties: {
         ...pagingSchema("n"),
-        dDia: date("Reference date; defaults to today"),
-        cTipo: { type: "string", enum: ["P", "R"], description: "P=payables, R=receivables" },
-        nCodCliente: { type: "number", description: "Filter by customer / supplier ID" },
+        dDia: date("Date to list the open titles for (Omie: \"data de registro\"); defaults to today"),
+        cTipo: { type: "string", enum: ["P", "R"], description: "P=payables, R=receivables — required" },
+        nCodCliente: { type: "number", description: `Filter by ${ID.customer}` },
         cNomeCliente: { type: "string", description: "Filter by customer / supplier name" },
       },
+      required: ["cTipo"],
     },
     param: withPaging("n"),
   },

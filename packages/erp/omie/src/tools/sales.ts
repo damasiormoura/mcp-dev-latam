@@ -1,4 +1,4 @@
-import { OmieTool, listOnly, pagingSchema, withPaging, date, flag, changeTrackingFilters, orderingFilters, notes } from "./types.js";
+import { OmieTool, listOnly, pagingSchema, withPaging, date, flag, changeTrackingFilters, orderingFilters, notes, ID } from "./types.js";
 
 const ORDER = "/produtos/pedido/";
 const FAT = "/produtos/pedidovendafat/";
@@ -6,14 +6,14 @@ const NF = "/produtos/nfconsultar/";
 
 /** Identifies a sales order by Omie ID or integration code. */
 const orderKey = {
-  codigo_pedido: { type: "number", description: "Omie order ID" },
+  codigo_pedido: { type: "number", description: ID.salesOrder },
   codigo_pedido_integracao: { type: "string", description: "Integration order code (alternative)" },
 } as const;
 const orderKeyRequired = ["codigo_pedido", "codigo_pedido_integracao"] as const;
 
 /** The billing endpoint spells the same key differently. */
 const fatKey = {
-  nCodPed: { type: "number", description: "Omie order ID" },
+  nCodPed: { type: "number", description: `${ID.salesOrder} — nCodPed here is the same value as codigo_pedido` },
   cCodIntPed: { type: "string", description: "Integration order code (alternative)" },
 } as const;
 const fatKeyRequired = ["nCodPed", "cCodIntPed"] as const;
@@ -24,7 +24,8 @@ export const salesTools: OmieTool[] = [
     description:
       "Create a sales order in Omie ERP (IncluirPedido). The body mirrors the Omie contract: " +
       "cabecalho + det[] + informacoes_adicionais. Resolve codigo_categoria with list_categories, " +
-      "codigo_conta_corrente with get_bank_accounts and codigo_parcela with list_payment_terms before calling.",
+      "codigo_conta_corrente with get_bank_accounts and codigo_parcela with list_payment_terms before calling. " +
+      "Returns codigo_pedido. Nothing fiscal happens until invoice_sales_order.",
     path: ORDER,
     call: "IncluirPedido",
     inputSchema: {
@@ -34,7 +35,7 @@ export const salesTools: OmieTool[] = [
           type: "object",
           description: "Order header",
           properties: {
-            codigo_cliente: { type: "number", description: "Omie customer ID (codigo_cliente_omie from list_customers)" },
+            codigo_cliente: { type: "number", description: ID.customer },
             codigo_pedido_integracao: { type: "string", description: "Integration order code (unique, max 60 chars)" },
             data_previsao: date("Expected billing date"),
             etapa: { type: "string", description: "Order stage: 00=Orçamento, 10=Pedido, 20=Separar, 50=Faturar, 60=Faturado" },
@@ -71,7 +72,7 @@ export const salesTools: OmieTool[] = [
                   "Product data. Identify the product with codigo_produto (Omie ID) or " +
                   "codigo_produto_integracao — one of the two is required.",
                 properties: {
-                  codigo_produto: { type: "number", description: "Omie product ID (from list_products)" },
+                  codigo_produto: { type: "number", description: ID.product },
                   codigo_produto_integracao: { type: "string", description: "Product integration code (alternative to codigo_produto)" },
                   codigo: { type: "string", description: "Product code shown on the order screen" },
                   descricao: { type: "string", description: "Product description" },
@@ -112,7 +113,7 @@ export const salesTools: OmieTool[] = [
           description: "Order-level accounting and billing data",
           properties: {
             codigo_categoria: { type: "string", description: "Category code from the chart of accounts (list_categories)" },
-            codigo_conta_corrente: { type: "number", description: "Bank account ID (get_bank_accounts)" },
+            codigo_conta_corrente: { type: "number", description: ID.bankAccount },
             consumidor_final: flag("Invoice is for a final consumer"),
             enviar_email: flag("Email the boleto on billing"),
             numero_pedido_cliente: { type: "string", description: "Customer's own order number" },
@@ -170,7 +171,8 @@ export const salesTools: OmieTool[] = [
   {
     name: "list_orders",
     description:
-      "List or search sales orders from Omie ERP. Note `etapa` selects the workflow column while " +
+      "List or search sales orders from Omie ERP (ListarPedidos); returns codigo_pedido per order. Note " +
+      "`etapa` selects the workflow column while " +
       "`status_pedido` selects the fiscal outcome (FATURADO, CANCELADO, ...) — they answer different " +
       "questions and can be combined.",
     path: ORDER,
@@ -183,7 +185,7 @@ export const salesTools: OmieTool[] = [
         ...orderingFilters("ordenar_por"),
         etapa: { type: "string", description: "Order stage filter (10=Pedido, 20=Separar, 50=Faturar, 60=Faturado)" },
         status_pedido: { type: "string", description: "Order status: FATURADO, CANCELADO, AUTORIZADO, DENEGADO, DEVOLVIDO" },
-        filtrar_por_cliente: { type: "number", description: "Filter by customer ID" },
+        filtrar_por_cliente: { type: "number", description: `Filter by ${ID.customer}` },
         filtrar_por_vendedor: { type: "number", description: "Filter by salesperson ID" },
         filtrar_por_projeto: { type: "number", description: "Filter by project ID" },
         numero_pedido_de: { type: "number", description: "Order number range, from" },
@@ -201,7 +203,9 @@ export const salesTools: OmieTool[] = [
   },
   {
     name: "get_sales_order",
-    description: "Consult a specific sales order by ID or integration code in Omie ERP",
+    description:
+      "Consult a specific sales order in Omie ERP (ConsultarPedido) — the full order with its items. When " +
+      "only the state matters, get_order_status is cheaper.",
     path: ORDER,
     call: "ConsultarPedido",
     inputSchema: { type: "object", properties: orderKey, anyOfRequired: orderKeyRequired },
@@ -247,7 +251,7 @@ export const salesTools: OmieTool[] = [
               produto: {
                 type: "object",
                 properties: {
-                  codigo_produto: { type: "number", description: "Omie product ID" },
+                  codigo_produto: { type: "number", description: ID.product },
                   codigo_produto_integracao: { type: "string", description: "Product integration code (alternative)" },
                   quantidade: { type: "number", description: "Quantity" },
                   valor_unitario: { type: "number", description: "Unit price in BRL" },
@@ -284,7 +288,8 @@ export const salesTools: OmieTool[] = [
     name: "change_order_stage",
     description:
       "Move a sales order to another stage in Omie ERP (TrocarEtapaPedido) — this is how an order " +
-      "advances from Pedido (10) through Separar (20) to Faturar (50).",
+      "advances from Pedido (10) through Separar (20) to Faturar (50). A stage change does not issue the " +
+      "NF-e — invoice_sales_order does.",
     path: ORDER,
     call: "TrocarEtapaPedido",
     inputSchema: {
@@ -328,7 +333,7 @@ export const salesTools: OmieTool[] = [
               produto_simul: {
                 type: "object",
                 properties: {
-                  codigo_produto: { type: "number", description: "Omie product ID" },
+                  codigo_produto: { type: "number", description: ID.product },
                   quantidade: { type: "number", description: "Quantity" },
                   valor_unitario: { type: "number", description: "Unit price in BRL" },
                   valor_desconto: { type: "number", description: "Discount value" },
@@ -345,7 +350,9 @@ export const salesTools: OmieTool[] = [
   },
   {
     name: "delete_order",
-    description: "Delete a sales order in Omie ERP (ExcluirPedido). Only works while the order is not billed.",
+    description:
+      "Permanently delete a sales order in Omie ERP (ExcluirPedido) — irreversible, and only for an order " +
+      "never billed. A billed order is cancelled with cancel_order instead.",
     path: ORDER,
     call: "ExcluirPedido",
     inputSchema: { type: "object", properties: orderKey, anyOfRequired: orderKeyRequired },
@@ -353,7 +360,8 @@ export const salesTools: OmieTool[] = [
   {
     name: "return_order",
     description:
-      "Register a return against a billed sales order in Omie ERP (DevolverPedido). Omit `itens` to " +
+      "Register a goods return against a billed sales order in Omie ERP (DevolverPedido) — a fiscal " +
+      "operation, confirm with the person first. Omit `itens` to " +
       "return the order in full, or list products with quantities for a partial return.",
     path: ORDER,
     call: "DevolverPedido",
@@ -367,7 +375,7 @@ export const salesTools: OmieTool[] = [
           items: {
             type: "object",
             properties: {
-              codigo_produto: { type: "number", description: "Omie product ID" },
+              codigo_produto: { type: "number", description: ID.product },
               quantidade: { type: "number", description: "Quantity to return; full item quantity when omitted" },
             },
             required: ["codigo_produto"],
@@ -389,14 +397,22 @@ export const salesTools: OmieTool[] = [
   },
   {
     name: "invoice_sales_order",
-    description: "Generate an invoice (NF) from an existing sales order in Omie ERP",
+    description:
+      "Bill a sales order in Omie ERP (FaturarPedidoVenda): issues the NF-e to SEFAZ and creates the AR " +
+      "title(s) and, unless disabled per item, the stock exit — a fiscal act. Confirm with the person and " +
+      "run validate_order first. Authorization may not be immediate: follow it with get_order_status or " +
+      "list_invoices, never by sending this again. Undo is cancel_order.",
     path: FAT,
     call: "FaturarPedidoVenda",
     inputSchema: { type: "object", properties: fatKey, anyOfRequired: fatKeyRequired },
   },
   {
     name: "cancel_order",
-    description: "Cancel a sales order in Omie ERP (CancelarPedidoVenda)",
+    description:
+      "Cancel a sales order in Omie ERP (CancelarPedidoVenda) — for an order that was billed or must stay " +
+      "on record as cancelled; one never billed can simply be removed with delete_order. Omie's docs do " +
+      "not say what this does to the order's NF-e and AR titles: check list_invoices and get_financial " +
+      "afterwards instead of assuming. Confirm with the person first.",
     path: FAT,
     call: "CancelarPedidoVenda",
     inputSchema: { type: "object", properties: fatKey, anyOfRequired: fatKeyRequired },
@@ -425,7 +441,8 @@ export const salesTools: OmieTool[] = [
   {
     name: "list_invoices",
     description:
-      "List or search invoices (NF) from Omie ERP. Set cApenasResumo=\"S\" when scanning a period — the " +
+      "List or search invoices (NF) from Omie ERP (ListarNF); returns nIdNF, the ID create_invoice and " +
+      "get_invoice_pdf take. Set cApenasResumo=\"S\" when scanning a period — the " +
       "full NF record is large, and the summary carries the key, number and total.",
     path: NF,
     call: "ListarNF",
@@ -448,7 +465,7 @@ export const salesTools: OmieTool[] = [
         cSerie: { type: "string", description: "NF-e series" },
         nNFInicial: { type: "number", description: "Invoice number range, from" },
         nNFFinal: { type: "number", description: "Invoice number range, to" },
-        nIdCliente: { type: "number", description: "Filter by customer ID" },
+        nIdCliente: { type: "number", description: `Filter by ${ID.customer}` },
         cnpj_cpf: { type: "string", description: "Filter by customer CNPJ / CPF" },
         cNumeroPedidoCliente: { type: "string", description: "Filter by the customer's own order number" },
         opPedido: { type: "string", description: "Originating sales order operation code, 2 chars (e.g. 01=service, 11=product)" },

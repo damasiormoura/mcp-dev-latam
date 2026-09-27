@@ -56,7 +56,7 @@ const RETRYABLE_HTTP_STATUSES = new Set([502, 503, 504]);
  * a write — the safe default when a new tool's method doesn't match a known
  * read pattern is "don't retry it automatically", not the other way round.
  */
-function isReadOnlyMethod(call: string): boolean {
+export function isReadOnlyMethod(call: string): boolean {
   return /^(Listar|Consultar|Obter|Pesquisar|Status|Simular|Validar|Posicao)/.test(call);
 }
 

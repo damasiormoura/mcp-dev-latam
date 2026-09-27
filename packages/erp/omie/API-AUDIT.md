@@ -547,7 +547,9 @@ Provavelmente o maior ganho por linha de código para agentes de cobrança:
 | Tool | Endpoint / método |
 |---|---|
 | ✅ `create_pix` / `get_pix_qrcode` / `get_pix_status` / `cancel_pix` | `/financas/pix/ GerarPix`, `GerarQrCodePix`, `ObterStatusPix`, `ListarPix`, `CancelarPix` |
-| ✅ `generate_boleto` / `get_boleto` / `cancel_boleto` / `extend_boleto` | `/financas/contareceberboleto/ GerarBoleto`, `ObterBoleto`, `CancelarBoleto`, `ProrrogarBoleto` |
+
+> **0.8.0:** `cancel_pix` envia `lDel=false` por padrão — o default do Omie (`true`) exclui a conta a receber que gerou o PIX. `cancel_service_order` exige `cCancelarNfse` explícito — o default do Omie (`"S"`) cancela a NFS-e na prefeitura. `create_pix` passou a exigir `vValor`, como o `GerarPix` documenta.
+| ✅ `generate_boleto` / `get_boleto` / `cancel_boleto` / `extend_boleto` | `/financas/contareceberboleto/ GerarBoleto`, `ObterBoleto`, `CancelarBoleto`, `ProrrogarBoleto` (`extend_boleto` só existiu de fato a partir da 0.8.0 — antes a linha estava marcada sem a tool) |
 | `get_boleto_url` | `/financas/pesquisartitulos/ ObterURLBoleto` |
 | ✅ `get_finance_summary` | `/financas/resumo/ ObterResumoFinancas`, `ObterListaEmAberto` |
 

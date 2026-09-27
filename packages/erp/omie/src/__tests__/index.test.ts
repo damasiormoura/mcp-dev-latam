@@ -108,7 +108,7 @@ const MIN_ARGS: Record<string, unknown> = {
   get_service_order: { nCodOS: 1 },
   validate_service_order: { nCodOS: 1 },
   invoice_service_order: { nCodOS: 1 },
-  cancel_service_order: { nCodOS: 1 },
+  cancel_service_order: { nCodOS: 1, cCancelarNfse: "N" },
   get_account_receivable: { codigo_lancamento_omie: 1 },
   get_account_payable: { codigo_lancamento_omie: 1 },
   update_account_receivable: { codigo_lancamento_omie: 1 },
@@ -120,6 +120,8 @@ const MIN_ARGS: Record<string, unknown> = {
   generate_boleto: { nCodTitulo: 1 },
   get_boleto: { nCodTitulo: 1 },
   cancel_boleto: { nCodTitulo: 1 },
+  extend_boleto: { nCodTitulo: 1, dDtVenc: "01/01/2027" },
+  list_open_titles: { cTipo: "R" },
   get_product_stock: { id_prod: 1 },
 };
 
@@ -147,22 +149,66 @@ describe("mcp-omie", () => {
   });
 
   it("tells the agent the data is live: instructions on initialize, read_at on results, the clause on read tools", async () => {
-    const { INSTRUCTIONS, TOOLS: all } = await import("../tools/index.js");
+    const { INSTRUCTIONS, TOOLS: all, isRead } = await import("../tools/index.js");
     expect(INSTRUCTIONS).toMatch(/snapshot/);
     expect(INSTRUCTIONS).toMatch(/call the tool AGAIN/);
     expect(INSTRUCTIONS).toMatch(/confirm with the person/);
+    expect(INSTRUCTIONS).toMatch(/REDUNDANT/);
+    expect(INSTRUCTIONS).toMatch(/not proof/);
     for (const t of all) {
-      const isRead = /^(list_|get_)/.test(t.name);
-      expect(/read_at/.test(t.description), `${t.name}`).toBe(isRead);
+      expect(/read_at/.test(t.description), `${t.name}`).toBe(isRead(t));
     }
+    // A read with a write's name still gets the clause.
+    expect(all.find((t) => t.name === "create_invoice")!.description).toMatch(/read_at/);
   });
 
-  it("exposes only name/description/inputSchema over the wire", async () => {
+  it("exposes only name/description/inputSchema/annotations over the wire", async () => {
     const { tools: listed } = await listToolsHandler();
 
     for (const tool of listed) {
-      expect(Object.keys(tool).sort()).toEqual(["description", "inputSchema", "name"]);
+      expect(Object.keys(tool).sort()).toEqual(["annotations", "description", "inputSchema", "name"]);
     }
+  });
+
+  it("annotates reads, additive writes and destructive writes from the Omie method", async () => {
+    const { tools: listed } = await listToolsHandler();
+    const ann = (name: string) => listed.find((t: any) => t.name === name).annotations;
+
+    expect(ann("get_financial")).toMatchObject({ readOnlyHint: true });
+    expect(ann("create_invoice")).toMatchObject({ readOnlyHint: true }); // ConsultarNF
+    expect(ann("create_order")).toMatchObject({ readOnlyHint: false, destructiveHint: false });
+    expect(ann("invoice_sales_order")).toMatchObject({ readOnlyHint: false, destructiveHint: false });
+    for (const name of ["cancel_pix", "cancel_account_receivable", "delete_order", "update_customer", "extend_boleto"]) {
+      expect(ann(name), name).toMatchObject({ readOnlyHint: false, destructiveHint: true });
+    }
+  });
+
+  describe("fields whose Omie default is destructive", () => {
+    it("cancel_pix keeps the AR title unless lDel is set — Omie's own default deletes it", async () => {
+      expect((await call("cancel_pix", { nIdPix: 1 })).body.param[0]).toEqual({ nIdPix: 1, lDel: false });
+      mockFetch.mockReset();
+      expect((await call("cancel_pix", { nIdPix: 1, lDel: true })).body.param[0]).toEqual({ nIdPix: 1, lDel: true });
+    });
+
+    it("cancel_service_order will not cancel an OS without an explicit NFS-e decision", async () => {
+      const result = await callToolHandler({ params: { name: "cancel_service_order", arguments: { nCodOS: 1 } } });
+
+      expect(result.isError).toBe(true);
+      expect(result.content[0].text).toContain("cCancelarNfse is required");
+      expect(mockFetch).not.toHaveBeenCalled();
+    });
+
+    it("create_pix requires vValor, as GerarPix does", async () => {
+      const result = await callToolHandler({ params: { name: "create_pix", arguments: { cCodIntPix: "P", nCodTitulo: 1 } } });
+
+      expect(result.isError).toBe(true);
+      expect(result.content[0].text).toContain("vValor is required");
+    });
+
+    it("cancel_receipt accepts the settlement integration code as an alternative", async () => {
+      const { body } = await call("cancel_receipt", { codigo_baixa_integracao: "BX-1" });
+      expect(body.param[0]).toEqual({ codigo_baixa_integracao: "BX-1" });
+    });
   });
 
   it("every tool declares a plausible Omie endpoint and method", async () => {

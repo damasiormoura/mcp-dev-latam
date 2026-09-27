@@ -9,7 +9,7 @@ import { OmieTool, listOnly, pagingSchema, withPaging, flag, changeTrackingFilte
 export const registryTools: OmieTool[] = [
   {
     name: "get_company_info",
-    description: "List companies registered in Omie ERP",
+    description: "List the companies (CNPJs) registered in this Omie account (ListarEmpresas) — despite the name, a listing",
     path: "/geral/empresas/",
     call: "ListarEmpresas",
     ...listOnly("snake"),
@@ -17,8 +17,9 @@ export const registryTools: OmieTool[] = [
   {
     name: "get_bank_accounts",
     description:
-      "List or search registered bank accounts in Omie ERP. Pass `filtrar_por_descricao` to resolve an " +
-      "account by name rather than paging — most write tools need a codigo_conta_corrente / nCodCC.",
+      "List or search registered bank accounts in Omie ERP (ListarContasCorrentes). Returns nCodCC, the " +
+      "bank account ID other tools take as nCodCC, id_conta_corrente, codigo_conta_corrente or nIdConta. " +
+      "Pass `filtrar_por_descricao` to resolve an account by name rather than paging.",
     path: "/geral/contacorrente/",
     call: "ListarContasCorrentes",
     inputSchema: {
@@ -37,7 +38,7 @@ export const registryTools: OmieTool[] = [
   {
     name: "list_categories",
     description:
-      "List or search chart of accounts categories in Omie ERP. Pass `descricao` to find a category by " +
+      "List or search chart of accounts categories in Omie ERP (ListarCategorias). Pass `descricao` to find a category by " +
       "name instead of paging the whole chart — the account typically has well over a hundred entries, " +
       "so resolving a codigo_categoria for a sales order or a payable is a search, not a scan.",
     path: "/geral/categorias/",
@@ -55,14 +56,14 @@ export const registryTools: OmieTool[] = [
   },
   {
     name: "list_departments",
-    description: "List departments (cost centers) in Omie ERP",
+    description: "List departments (cost centers) in Omie ERP (ListarDepartamentos) — the codes cost-center splits (cCodDepto / cCodDep) take",
     path: "/geral/departamentos/",
     call: "ListarDepartamentos",
     ...listOnly("snake"),
   },
   {
     name: "list_projects",
-    description: "List or search projects in Omie ERP",
+    description: "List or search projects in Omie ERP (ListarProjetos) — the project IDs orders and titles take as codigo_projeto / nCodProj / codProj",
     path: "/geral/projetos/",
     call: "ListarProjetos",
     inputSchema: {
@@ -79,7 +80,7 @@ export const registryTools: OmieTool[] = [
   },
   {
     name: "list_dre",
-    description: "List DRE (income statement) chart of accounts in Omie ERP",
+    description: "List the DRE (income statement) account structure in Omie ERP (ListarCadastroDRE) — the lines categories roll up into",
     path: "/geral/dre/",
     call: "ListarCadastroDRE",
     inputSchema: {

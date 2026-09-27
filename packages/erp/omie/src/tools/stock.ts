@@ -1,4 +1,4 @@
-import { OmieTool, listOnly, pagingSchema, withPaging, date, flag, changeTrackingFilters, orderingFilters, notes } from "./types.js";
+import { OmieTool, listOnly, pagingSchema, withPaging, date, flag, changeTrackingFilters, orderingFilters, notes, ID } from "./types.js";
 
 const ADJUST = "/estoque/ajuste/";
 const QUERY = "/estoque/consulta/";
@@ -15,7 +15,7 @@ export const stockTools: OmieTool[] = [
     inputSchema: {
       type: "object",
       properties: {
-        id_prod: { type: "number", description: "Omie product ID (from list_products)" },
+        id_prod: { type: "number", description: ID.product },
         cod_int: { type: "string", description: "Product integration code (alternative to id_prod)" },
         cod_int_ajuste: { type: "string", description: "Integration code for this adjustment — send it to keep the operation idempotent" },
         codigo_local_estoque: { type: "number", description: "Warehouse location ID (list_stock_locations); defaults to the standard location" },
@@ -86,7 +86,10 @@ export const stockTools: OmieTool[] = [
   },
   {
     name: "get_stock_position",
-    description: "Get current stock position / balance in Omie ERP",
+    description:
+      "List the stock position of every product on a date in Omie ERP (ListarPosEstoque) — nCodProd, " +
+      "cCodigo and the balance per product. Items with zero stock are left out unless cExibeTodos=\"S\". " +
+      "For a single product get_product_stock is cheaper.",
     path: QUERY,
     call: "ListarPosEstoque",
     inputSchema: {
@@ -112,7 +115,7 @@ export const stockTools: OmieTool[] = [
     inputSchema: {
       type: "object",
       properties: {
-        id_prod: { type: "number", description: "Omie product ID" },
+        id_prod: { type: "number", description: ID.product },
         cod_int: { type: "string", description: "Product integration code (alternative)" },
         codigo_local_estoque: { type: "number", description: "Warehouse location ID" },
         data: date("Reference date"),
@@ -132,7 +135,7 @@ export const stockTools: OmieTool[] = [
       properties: {
         ...pagingSchema("n"),
         codigo_local_estoque: { type: "number", description: "Filter by warehouse location ID" },
-        idProd: { type: "number", description: "Filter by Omie product ID" },
+        idProd: { type: "number", description: `Filter by ${ID.product}` },
         dDtInicial: date("Start date"),
         dDtFinal: date("End date"),
         lista_local_estoque: { type: "string", description: "Comma-separated list of warehouse location IDs" },
