@@ -50,14 +50,16 @@ const RETRYABLE_HTTP_STATUSES = new Set([502, 503, 504]);
  * covers: a method that reads is always Listar*, Consultar*, Obter*,
  * Pesquisar*, Status*, Simular* or Validar* (Validar and Simular are
  * explicitly non-committing — they check feasibility or price without
- * creating anything), plus the one-off PosicaoEstoque. Everything else
+ * creating anything), plus the one-offs PosicaoEstoque and ConsultaLancCC
+ * (no "r" — /financas/contacorrentelancamentos/ spells it that way, so the
+ * prefix matched is "Consulta"). Everything else
  * (Incluir, Alterar, Excluir, Cancelar, Lancar, Faturar, Trocar, Devolver,
  * Gerar, Upsert, ...) commits a change. An unrecognized prefix is treated as
  * a write — the safe default when a new tool's method doesn't match a known
  * read pattern is "don't retry it automatically", not the other way round.
  */
 export function isReadOnlyMethod(call: string): boolean {
-  return /^(Listar|Consultar|Obter|Pesquisar|Status|Simular|Validar|Posicao)/.test(call);
+  return /^(Listar|Consulta|Obter|Pesquisar|Status|Simular|Validar|Posicao)/.test(call);
 }
 
 function isRetryable(call: string, err: unknown): boolean {

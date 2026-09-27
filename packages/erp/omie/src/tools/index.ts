@@ -7,6 +7,7 @@ import { purchaseTools } from "./purchases.js";
 import { serviceTools } from "./services.js";
 import { financeTools } from "./finance.js";
 import { cancellationTools } from "./cancellation.js";
+import { reconciliationTools } from "./reconciliation.js";
 import { billingTools } from "./billing.js";
 import { stockTools } from "./stock.js";
 import { registryTools } from "./registry.js";
@@ -90,7 +91,7 @@ export const TOOL_GROUPS: { title: string; tools: OmieTool[] }[] = [
   { title: "Sales orders & invoices", tools: salesTools },
   { title: "Purchasing", tools: purchaseTools },
   { title: "Services (OS / NFS-e)", tools: serviceTools },
-  { title: "Finance — receivables, payables, ledger", tools: [...financeTools, ...cancellationTools] },
+  { title: "Finance — receivables, payables, ledger", tools: [...financeTools, ...cancellationTools, ...reconciliationTools] },
   { title: "Billing — PIX & boleto", tools: billingTools },
   { title: "Stock", tools: stockTools },
   { title: "Supporting registries", tools: registryTools },

@@ -79,6 +79,8 @@ const MIN_ARGS: Record<string, unknown> = {
   },
   receive_account_receivable: { codigo_lancamento: 1, valor: 100, data: "01/01/2027", codigo_conta_corrente: 3 },
   cancel_receipt: { codigo_baixa: 7 },
+  reconcile_receipt: { codigo_baixa: 7 },
+  unreconcile_receipt: { codigo_baixa: 7 },
   get_bank_statement: { dPeriodoInicial: "01/01/2027", dPeriodoFinal: "31/01/2027" },
   create_cash_entry: {
     cCodIntLanc: "CC-1",
@@ -113,6 +115,7 @@ const MIN_ARGS: Record<string, unknown> = {
   get_account_payable: { codigo_lancamento_omie: 1 },
   update_account_receivable: { codigo_lancamento_omie: 1 },
   update_account_payable: { codigo_lancamento_omie: 1 },
+  get_cash_entry: { nCodLanc: 1 },
   update_cash_entry: { cCodIntLanc: "CC-1" },
   delete_cash_entry: { nCodLanc: 1 },
   get_pix_status: { nIdPix: 1 },
@@ -180,6 +183,13 @@ describe("mcp-omie", () => {
     expect(ann("invoice_sales_order")).toMatchObject({ readOnlyHint: false, destructiveHint: false });
     for (const name of ["cancel_pix", "cancel_account_receivable", "delete_order", "update_customer", "extend_boleto"]) {
       expect(ann(name), name).toMatchObject({ readOnlyHint: false, destructiveHint: true });
+    }
+    // Reconciling changes the state of an existing settlement rather than adding a record.
+    for (const name of ["reconcile_receipt", "unreconcile_receipt"]) {
+      expect(ann(name), name).toMatchObject({ readOnlyHint: false, destructiveHint: true });
+    }
+    for (const name of ["get_cash_entry", "list_unreconciled_entries"]) {
+      expect(ann(name), name).toMatchObject({ readOnlyHint: true });
     }
   });
 
@@ -283,6 +293,24 @@ describe("mcp-omie", () => {
     it("cancel_receipt accepts the settlement integration code as an alternative", async () => {
       const { body } = await call("cancel_receipt", { codigo_baixa_integracao: "BX-1" });
       expect(body.param[0]).toEqual({ codigo_baixa_integracao: "BX-1" });
+    });
+
+    it("reconcile_receipt and unreconcile_receipt send only the settlement key", async () => {
+      for (const [name, method] of [["reconcile_receipt", "ConciliarRecebimento"], ["unreconcile_receipt", "DesconciliarRecebimento"]]) {
+        mockFetch.mockReset();
+        const { url, body } = await call(name, { codigo_baixa: 5964359133 });
+        expect(url, name).toBe("https://app.omie.com.br/api/v1/financas/contareceber/");
+        expect(body.call, name).toBe(method);
+        expect(body.param[0], name).toEqual({ codigo_baixa: 5964359133 });
+      }
+    });
+
+    it("reconcile_receipt refuses a call with no settlement to reconcile", async () => {
+      const result = await callToolHandler({ params: { name: "reconcile_receipt", arguments: {} } });
+
+      expect(result.isError).toBe(true);
+      expect(result.content[0].text).toContain("at least one of: codigo_baixa, codigo_baixa_integracao");
+      expect(mockFetch).not.toHaveBeenCalled();
     });
   });
 
@@ -928,6 +956,151 @@ describe("mcp-omie", () => {
       } finally {
         stderr.mockRestore();
       }
+    });
+  });
+
+  /**
+   * list_unreconciled_entries joins two reads. The rows below are trimmed from
+   * the production Sicredi account on 2026-09-27 (names and tax IDs replaced):
+   * the extrato's nCodLancamento is the settlement's nCodMovCC.
+   */
+  describe("list_unreconciled_entries", () => {
+    const CC = 5952605177;
+    const saldo = (n: number, d: string) => ({ cDesCliente: "SALDO", dDataLancamento: d, nCodLancamento: n, nSaldo: 0, nValorDocumento: 0 });
+    const RECEIPT_ROW = {
+      nCodLancamento: 5964359132, dDataLancamento: "09/09/2026", nValorDocumento: 6000, cNatureza: "R",
+      cOrigem: "Conta Recebida", cSituacao: "Não conciliado", cDesCliente: "CLIENTE A", cRazCliente: "CLIENTE A LTDA",
+      cTipoDocumento: "Nota Fiscal Eletrônica", cDocumentoFiscal: "00003996", nCodLancRelac: 5964359132,
+    };
+    const PAYMENT_ROW = {
+      nCodLancamento: 5964883856, dDataLancamento: "10/09/2026", nValorDocumento: -1100, cNatureza: "P",
+      cOrigem: "Conta Paga", cSituacao: "Não conciliado", cDesCliente: "FORNECEDOR B", cRazCliente: "FORNECEDOR B LTDA",
+      cTipoDocumento: "Boleto", cNumero: "RPS 3941162",
+    };
+    const FORECAST_ROW = {
+      nCodLancamento: 5965615250, dDataLancamento: "15/09/2026", nValorDocumento: 4250, cNatureza: "R",
+      cOrigem: "Conta a Receber", cSituacao: "Previsto", cDesCliente: "CLIENTE C",
+    };
+    const RECONCILED_ROW = { ...RECEIPT_ROW, nCodLancamento: 5960000001, cSituacao: "Conciliado", dDataConciliacao: "05/09/2026" };
+    const extrato = (rows: unknown[]) => ({
+      nCodCC: CC, cDescricao: "Sicredi", nCodBanco: "748", nCodAgencia: "0737", nNumConta: "35652-8",
+      dPeriodoInicial: "01/09/2026", dPeriodoFinal: "27/09/2026", nSaldoAtual: 29220.04, nSaldoConciliado: -1100,
+      listaMovimentos: [{ ...saldo(1, "31/08/2026"), cDesCliente: "SALDO ANTERIOR" }, saldo(2, "01/09/2026"), ...rows],
+    });
+    const settlement = (d: Record<string, unknown>) => ({ detalhes: { nCodCC: CC, ...d }, resumo: {} });
+    const RECEIPT_BX = settlement({ cNatureza: "R", cGrupo: "CONTA_CORRENTE_REC", nCodBaixa: 5964359133, nCodMovCC: 5964359132, nCodTitulo: 5964354918 });
+    const PAYMENT_BX = settlement({ cNatureza: "P", cGrupo: "CONTA_CORRENTE_PAG", nCodBaixa: 5964883857, nCodMovCC: 5964883856, nCodTitulo: 1622803363 });
+
+    function respond(...bodies: unknown[]) {
+      for (const b of bodies) mockFetch.mockResolvedValueOnce({ ok: true, json: () => Promise.resolve(b) });
+    }
+    const sent = () => mockFetch.mock.calls.map(([url, opts]) => {
+      const body = JSON.parse(opts.body);
+      return { url, call: body.call, param: body.param[0] };
+    });
+    const PERIOD = { dPeriodoInicial: "01/09/2026", dPeriodoFinal: "27/09/2026" };
+    const run = async (args: Record<string, unknown>) => {
+      const result = await callToolHandler({ params: { name: "list_unreconciled_entries", arguments: args } });
+      return { result, body: result.isError ? undefined : JSON.parse(result.content[0].text) };
+    };
+
+    it("lists the unreconciled rows, each with its settlement and whether the API can reconcile it", async () => {
+      respond(
+        extrato([RECEIPT_ROW, PAYMENT_ROW, FORECAST_ROW, RECONCILED_ROW, saldo(3, "10/09/2026")]),
+        { nPagina: 1, nTotPaginas: 1, movimentos: [RECEIPT_BX, PAYMENT_BX] },
+      );
+
+      const { result, body } = await run({ nCodCC: CC, ...PERIOD });
+
+      expect(result.isError).toBeUndefined();
+      expect(sent()).toEqual([
+        { url: "https://app.omie.com.br/api/v1/financas/extrato/", call: "ListarExtrato", param: { nCodCC: CC, ...PERIOD } },
+        {
+          url: "https://app.omie.com.br/api/v1/financas/mf/", call: "ListarMovimentos",
+          param: { nPagina: 1, nRegPorPagina: 100, cTpLancamento: "BX", nCodCC: CC, dDtPagtoDe: "01/09/2026", dDtPagtoAte: "27/09/2026" },
+        },
+      ]);
+      expect(body.pendentes.map((p: any) => p.nCodLancamento)).toEqual([5964359132, 5964883856]);
+      expect(body.pendentes[0]).toMatchObject({
+        tipo: "recebimento", nCodBaixa: 5964359133, nCodTitulo: 5964354918, conciliavel_via_api: true,
+        cRazCliente: "CLIENTE A LTDA", nValorDocumento: 6000,
+      });
+      expect(body.pendentes[0].como_conciliar).toContain("reconcile_receipt with codigo_baixa 5964359133");
+      expect(body.pendentes[1]).toMatchObject({ tipo: "pagamento", nCodBaixa: 5964883857, conciliavel_via_api: false });
+      expect(body.pendentes[1].como_conciliar).toContain("no ConciliarPagamento");
+      // The daily SALDO rows are not entries; the forecast and the reconciled row are counted, not listed.
+      expect(body.resumo).toEqual({
+        lancamentos_no_periodo: 4,
+        por_situacao: { "Não conciliado": 2, Previsto: 1, Conciliado: 1 },
+        pendentes: 2,
+        conciliaveis_via_api: 1,
+        entradas_pendentes: 6000,
+        saidas_pendentes: -1100,
+      });
+      expect(body.conta).toMatchObject({ nCodCC: CC, cDescricao: "Sicredi" });
+      expect(body.saldos).toEqual({ nSaldoAtual: 29220.04, nSaldoConciliado: -1100 });
+      expect(body.read_at).toMatch(/^\d{4}-/);
+    });
+
+    it("does not read the settlements when nothing is pending", async () => {
+      respond(extrato([FORECAST_ROW, RECONCILED_ROW]));
+
+      const { body } = await run({ nCodCC: CC, ...PERIOD });
+
+      expect(sent().map((s) => s.call)).toEqual(["ListarExtrato"]);
+      expect(body.pendentes).toEqual([]);
+      expect(body.resumo.pendentes).toBe(0);
+    });
+
+    it("pages through the settlements until it finds every one", async () => {
+      respond(
+        extrato([RECEIPT_ROW, PAYMENT_ROW]),
+        { nPagina: 1, nTotPaginas: 2, movimentos: [PAYMENT_BX] },
+        { nPagina: 2, nTotPaginas: 2, movimentos: [RECEIPT_BX] },
+      );
+
+      const { body } = await run({ nCodCC: CC, ...PERIOD });
+
+      expect(sent().map((s) => s.param.nPagina)).toEqual([undefined, 1, 2]);
+      expect(body.pendentes[0]).toMatchObject({ nCodBaixa: 5964359133, conciliavel_via_api: true });
+    });
+
+    it("never pairs a row with a settlement from another account", async () => {
+      const elsewhere = settlement({ ...RECEIPT_BX.detalhes, nCodCC: 5965615212 });
+      respond(extrato([RECEIPT_ROW]), { nPagina: 1, nTotPaginas: 1, movimentos: [elsewhere] });
+
+      const { body } = await run({ nCodCC: CC, ...PERIOD });
+
+      expect(body.pendentes[0]).not.toHaveProperty("nCodBaixa");
+      expect(body.pendentes[0].conciliavel_via_api).toBe(false);
+      // A receipt whose settlement was not found says where to look for it.
+      expect(body.pendentes[0].como_conciliar).toContain("nCodMovCC 5964359132");
+    });
+
+    it("tells a manual ledger entry apart from a settlement", async () => {
+      const manual = { ...PAYMENT_ROW, nCodLancamento: 5971370949, cOrigem: "Lançamento no Conta Corrente", nValorDocumento: -215.74 };
+      respond(extrato([manual]), { nPagina: 1, nTotPaginas: 1, movimentos: [] });
+
+      const { body } = await run({ nCodCC: CC, ...PERIOD });
+
+      expect(body.pendentes[0]).toMatchObject({ tipo: "lancamento_cc", conciliavel_via_api: false });
+    });
+
+    it("resolves an account given by integration code to its nCodCC for the settlements", async () => {
+      respond(extrato([RECEIPT_ROW]), { nPagina: 1, nTotPaginas: 1, movimentos: [RECEIPT_BX] });
+
+      await run({ cCodIntCC: "SICREDI", ...PERIOD });
+
+      expect(sent()[0].param).toEqual({ cCodIntCC: "SICREDI", ...PERIOD });
+      expect(sent()[1].param).toMatchObject({ nCodCC: CC });
+    });
+
+    it("needs an account before it asks Omie anything", async () => {
+      const { result } = await run(PERIOD);
+
+      expect(result.isError).toBe(true);
+      expect(result.content[0].text).toContain("at least one of: nCodCC, cCodIntCC");
+      expect(mockFetch).not.toHaveBeenCalled();
     });
   });
 });

@@ -110,11 +110,11 @@ describe("omieRequest — read/write classification", () => {
   it.each([
     ["ListarClientes", true], ["ConsultarPedido", true], ["ObterNfe", true],
     ["PesquisarPedCompra", true], ["StatusPedido", true], ["SimularImpostos", true],
-    ["ValidarPedidoVenda", true], ["PosicaoEstoque", true],
+    ["ValidarPedidoVenda", true], ["PosicaoEstoque", true], ["ConsultaLancCC", true],
     ["IncluirCliente", false], ["AlterarOS", false], ["ExcluirPedido", false],
     ["CancelarPix", false], ["LancarPagamento", false], ["FaturarOS", false],
     ["TrocarEtapaPedido", false], ["DevolverPedido", false], ["GerarBoleto", false],
-    ["UpsertProduto", false],
+    ["UpsertProduto", false], ["ConciliarRecebimento", false], ["DesconciliarRecebimento", false],
   ])("%s is retryable on network failure: %s", async (call, expectRetried) => {
     const { omieRequest } = await import("../omie.js");
     mockFetch.mockRejectedValue(new TypeError("fetch failed"));

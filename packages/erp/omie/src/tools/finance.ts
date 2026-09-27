@@ -50,7 +50,12 @@ function settlementFields(kind: "receipt" | "payment") {
     multa: { type: "number", description: "Penalty amount" },
     data: date("Settlement date"),
     observacao: { type: "string", description: "Settlement notes" },
-    conciliar_documento: flag("Reconcile the document automatically"),
+    conciliar_documento: flag(
+      kind === "receipt"
+        ? "S = post the settlement already reconciled with the bank. Can also be done later with reconcile_receipt"
+        : "S = post the payment already reconciled with the bank. The ONLY way the API reconciles a payment: " +
+            "Omie has no ConciliarPagamento, so one settled without it stays unreconciled until done in Omie's screen"
+    ),
   };
 }
 
@@ -258,7 +263,8 @@ export const financeTools: OmieTool[] = [
       "with codigo_lancamento or codigo_lancamento_integracao — without one of them the settlement has " +
       "no target. Supply your own reference in codigo_baixa_integracao; codigo_baixa is the integer Omie " +
       "assigns. Moves money: the title becomes PAGO (or partially paid) and a bank-ledger entry is posted. " +
-      "Never repeat the call after an error — re-read the title instead. Undo with cancel_payment.",
+      "Never repeat the call after an error — re-read the title instead. Undo with cancel_payment. To have " +
+      "it reconciled with the bank, send conciliar_documento=S now: the API cannot reconcile a payment afterwards.",
     path: AP,
     call: "LancarPagamento",
     inputSchema: {
@@ -364,9 +370,11 @@ export const financeTools: OmieTool[] = [
   {
     name: "list_cash_entries",
     description:
-      "List manual bank account ledger entries in Omie ERP (ListarLancCC) — the entries create_cash_entry " +
-      "makes, keyed by nCodLanc. Settlements of AR/AP titles are not here: see list_financial_movements, " +
-      "or get_bank_statement for the account as the bank sees it.",
+      "List bank account ledger entries in Omie ERP (ListarLancCC), keyed by nCodLanc — both the manual ones " +
+      "create_cash_entry makes and the ones each AR/AP settlement posts. A settlement's entry has " +
+      "diversos.cOrigem BAXR / BAXP and the title in diversos.nCodLancCR / nCodLancCP; diversos.dDtConc is " +
+      "the reconciliation date, empty while the entry is unreconciled. The settlement ID (nCodBaixa) is not " +
+      "here: see list_financial_movements, or list_unreconciled_entries for what is pending reconciliation.",
     path: CC,
     call: "ListarLancCC",
     inputSchema: {
@@ -381,6 +389,25 @@ export const financeTools: OmieTool[] = [
       },
     },
     param: withPaging("n"),
+  },
+  {
+    name: "get_cash_entry",
+    description:
+      "Consult a single bank account ledger entry in Omie ERP (ConsultaLancCC) — manual or posted by an " +
+      "AR/AP settlement. Every line of get_bank_statement is one of these (its nCodLancamento is the " +
+      "nCodLanc here). diversos.dDtConc / cHrConc / cUsConc say when and by whom it was reconciled, empty " +
+      "while it is not; diversos.nCodLancCR / nCodLancCP name the title whose settlement posted it. This " +
+      "is how to confirm that reconcile_receipt or unreconcile_receipt took effect.",
+    path: CC,
+    call: "ConsultaLancCC",
+    inputSchema: {
+      type: "object",
+      properties: {
+        nCodLanc: { type: "number", description: ID.cashEntry },
+        cCodIntLanc: { type: "string", description: "Integration code, for an entry created with one (alternative)" },
+      },
+      anyOfRequired: ["nCodLanc", "cCodIntLanc"],
+    },
   },
   {
     name: "update_cash_entry",
@@ -474,6 +501,7 @@ export const financeTools: OmieTool[] = [
         nCodCliente: { type: "number", description: `Filter by ${ID.customer}` },
         cCPFCNPJCliente: { type: "string", description: "Filter by customer / supplier CPF / CNPJ" },
         nCodCC: { type: "number", description: `Filter by ${ID.bankAccount}` },
+        nCodMovCC: { type: "number", description: `Filter by one ${ID.cashEntry} — with cTpLancamento BXCR / BXCP, the settlement that posted it` },
         cCodCateg: { type: "string", description: "Filter by category code" },
         cExibirDepartamentos: flag("Include the department split"),
       },
