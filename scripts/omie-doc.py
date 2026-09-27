@@ -139,15 +139,25 @@ def complex_types(page: str) -> dict[str, list[dict]]:
         if not named:
             continue
         fields = []
-        for row in re.finditer(
-            r'<td class="parameter-name (parameter-\w+)">(.*?)</td>\s*'
-            r'<td class="parameter-type">(.*?)</td>\s*'
-            r'<td class="parameter-docs">(.*?)</td>', chunk, re.S,
-        ):
-            doc = _strip(row.group(4))
+        # One field per parameter-name cell. Omie omits the parameter-docs
+        # cell entirely for a field with no description, so the three cells
+        # cannot be matched as one pattern: a lazy match across them used to
+        # run on into the next row, gluing fields together
+        # ("string10\n\n\ncExibeTodos\nstring1") and dropping the one after.
+        # Each row is cut at the next parameter-name cell and the docs cell is
+        # looked for only inside it.
+        starts = [m.start() for m in re.finditer(r'<td class="parameter-name ', chunk)]
+        for begin, end in zip(starts, starts[1:] + [len(chunk)]):
+            row = chunk[begin:end]
+            name = re.match(r'<td class="parameter-name parameter-\w+">(.*?)</td>', row, re.S)
+            typ = re.search(r'<td class="parameter-type">(.*?)</td>', row, re.S)
+            if not name or not typ:
+                continue
+            docs = re.search(r'<td class="parameter-docs">(.*?)</td>', row, re.S)
+            doc = _strip(docs.group(1)) if docs else ""
             fields.append({
-                "name": _strip(row.group(2)),
-                "type": _strip(row.group(3)),
+                "name": _strip(name.group(1)),
+                "type": _strip(typ.group(1)),
                 "deprecated": "DEPRECATED" in doc,
                 "doc": doc[:200],
             })
@@ -188,6 +198,13 @@ def cmd_fixture(args: argparse.Namespace) -> int:
         if not fields:
             problems.append(f"{tool}: no request fields resolved (type={rt})")
             continue
+        # A name or type with whitespace in it is two rows parsed as one —
+        # what happened silently when Omie started omitting empty docs cells.
+        # Refuse to write that into the contract rather than warn about it.
+        malformed = [f["name"] for f in fields if re.search(r"\s", f["name"] + f["type"]) or not f["type"]]
+        if malformed:
+            print(f"error: {tool}: malformed field row(s) {malformed} on /{path}/ — parser out of date", file=sys.stderr)
+            return 2
         fixture[tool] = {
             "path": f"/{path.strip('/')}/",
             "call": method,
