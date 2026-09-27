@@ -1,4 +1,4 @@
-import { OmieTool, date, notes } from "./types.js";
+import { OmieTool, date, notes, ID } from "./types.js";
 
 const PATH = "/produtos/pedidocompra/";
 
@@ -19,13 +19,13 @@ export const purchaseTools: OmieTool[] = [
           properties: {
             cCodIntPed: { type: "string", description: "Integration code for the purchase order (unique, max 20 chars)" },
             dDtPrevisao: date("Expected delivery date"),
-            nCodFor: { type: "number", description: "Omie supplier ID (list_customers also returns suppliers)" },
+            nCodFor: { type: "number", description: `Supplier: ${ID.customer} (suppliers are customer records)` },
             cCodIntFor: { type: "string", description: "Supplier integration code (alternative to nCodFor)" },
             cCnpjCpfFor: { type: "string", description: "Supplier CNPJ / CPF (alternative to nCodFor and cCodIntFor)" },
             cCodParc: { type: "string", description: "Payment term code, e.g. \"999\" for a single installment" },
             nQtdeParc: { type: "number", description: "Number of installments" },
             cCodCateg: { type: "string", description: "Purchase category code (list_categories)" },
-            nCodCC: { type: "number", description: "Bank account ID (get_bank_accounts)" },
+            nCodCC: { type: "number", description: ID.bankAccount },
             nCodProj: { type: "number", description: "Project ID" },
             nCodCompr: { type: "number", description: "Buyer ID" },
             cContato: { type: "string", description: "Contact at the supplier" },
@@ -46,7 +46,7 @@ export const purchaseTools: OmieTool[] = [
             type: "object",
             properties: {
               cCodIntItem: { type: "string", description: "Integration code for this line" },
-              nCodProd: { type: "number", description: "Omie product ID (from list_products)" },
+              nCodProd: { type: "number", description: ID.product },
               cCodIntProd: { type: "string", description: "Product integration code (alternative to nCodProd)" },
               cProduto: { type: "string", description: "Product code as it appears on the supplier's invoice" },
               cDescricao: { type: "string", description: "Item description" },
@@ -119,7 +119,7 @@ export const purchaseTools: OmieTool[] = [
   {
     name: "list_purchase_orders",
     description:
-      "List purchase orders from Omie ERP (PesquisarPedCompra). This endpoint has no `etapa` filter and " +
+      "List purchase orders from Omie ERP (PesquisarPedCompra); returns nCodPed per order. This endpoint has no `etapa` filter and " +
       "its own pagination field names — the stage is selected with the lExibirPedidos* flags, which take \"T\"/\"F\".",
     path: PATH,
     call: "PesquisarPedCompra",

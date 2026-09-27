@@ -1,4 +1,4 @@
-import { OmieTool, pagingSchema, withPaging, flag, changeTrackingFilters } from "./types.js";
+import { OmieTool, pagingSchema, withPaging, flag, changeTrackingFilters, ID } from "./types.js";
 
 const PATH = "/geral/clientes/";
 
@@ -32,21 +32,34 @@ const customerFields = {
 export const customerTools: OmieTool[] = [
   {
     name: "list_customers",
-    description: "List customers from Omie ERP",
+    description:
+      "List or search customers (and suppliers — Omie keeps both in one register) in Omie ERP " +
+      "(ListarClientes). Returns codigo_cliente_omie, the ID other tools take as codigo_cliente, " +
+      "codigo_cliente_fornecedor, nCodCli, nIdCliente or nCodCliente. Search with clientesFiltro, e.g. " +
+      "{\"cnpj_cpf\": \"...\"} or {\"razao_social\": \"...\"}, instead of paging.",
     path: PATH,
     call: "ListarClientes",
     inputSchema: {
       type: "object",
       properties: {
         ...pagingSchema("snake"),
-        clientesFiltro: { type: "object", description: "Filter object (nome_fantasia, cnpj_cpf, etc.)" },
+        clientesFiltro: {
+          type: "object",
+          description:
+            "Filter object. Keys: codigo_cliente_omie, codigo_cliente_integracao, cnpj_cpf, razao_social, " +
+            "nome_fantasia, endereco, bairro, cidade, estado, cep, contato, email, inscricao_estadual, " +
+            "inscricao_municipal, pessoa_fisica, optante_simples_nacional, inativo, tags",
+        },
       },
     },
     param: withPaging("snake"),
   },
   {
     name: "create_customer",
-    description: "Create a customer in Omie ERP",
+    description:
+      "Create a customer in Omie ERP (IncluirCliente); returns codigo_cliente_omie. Can create a duplicate when " +
+      "the CNPJ/CPF is already registered — prefer upsert_customer unless you have just checked with " +
+      "list_customers.",
     path: PATH,
     call: "IncluirCliente",
     inputSchema: {
@@ -57,13 +70,13 @@ export const customerTools: OmieTool[] = [
   },
   {
     name: "get_customer",
-    description: "Consult a single customer in Omie ERP by Omie ID or integration code",
+    description: "Consult a single customer in Omie ERP (ConsultarCliente) by Omie ID or integration code. To find one by CNPJ/CPF use list_customers with clientesFiltro.cnpj_cpf",
     path: PATH,
     call: "ConsultarCliente",
     inputSchema: {
       type: "object",
       properties: {
-        codigo_cliente_omie: { type: "number", description: "Omie customer ID" },
+        codigo_cliente_omie: { type: "number", description: ID.customer },
         codigo_cliente_integracao: { type: "string", description: "Integration code (alternative)" },
       },
       anyOfRequired: ["codigo_cliente_omie", "codigo_cliente_integracao"],
@@ -72,14 +85,14 @@ export const customerTools: OmieTool[] = [
   {
     name: "update_customer",
     description:
-      "Update an existing customer in Omie ERP. Identify the record with codigo_cliente_omie or " +
+      "Update an existing customer in Omie ERP (AlterarCliente). Identify the record with codigo_cliente_omie or " +
       "codigo_cliente_integracao; only the fields you send are changed.",
     path: PATH,
     call: "AlterarCliente",
     inputSchema: {
       type: "object",
       properties: {
-        codigo_cliente_omie: { type: "number", description: "Omie customer ID" },
+        codigo_cliente_omie: { type: "number", description: ID.customer },
         ...customerFields,
       },
       anyOfRequired: ["codigo_cliente_omie", "codigo_cliente_integracao"],

@@ -2009,6 +2009,218 @@
           "deprecated": false
         }
       }
+    },
+    "cancel_boleto": {
+      "path": "/financas/contareceberboleto/",
+      "call": "CancelarBoleto",
+      "requestType": "boletoCancelarRequest",
+      "fields": {
+        "nCodTitulo": {
+          "type": "integer",
+          "deprecated": false
+        },
+        "cCodIntTitulo": {
+          "type": "string60",
+          "deprecated": false
+        }
+      }
+    },
+    "cancel_payment": {
+      "path": "/financas/contapagar/",
+      "call": "CancelarPagamento",
+      "requestType": "conta_pagar_cancelar_pagamento",
+      "fields": {
+        "codigo_baixa": {
+          "type": "integer",
+          "deprecated": false
+        },
+        "codigo_baixa_integracao": {
+          "type": "string20",
+          "deprecated": false
+        }
+      }
+    },
+    "cancel_pix": {
+      "path": "/financas/pix/",
+      "call": "CancelarPix",
+      "requestType": "CancelarPixRequest",
+      "fields": {
+        "nIdPix": {
+          "type": "integer",
+          "deprecated": false
+        },
+        "cCodIntPix": {
+          "type": "string60",
+          "deprecated": false
+        },
+        "lDel": {
+          "type": "boolean",
+          "deprecated": false
+        }
+      }
+    },
+    "cancel_receipt": {
+      "path": "/financas/contareceber/",
+      "call": "CancelarRecebimento",
+      "requestType": "conta_receber_cancelar_recebimento",
+      "fields": {
+        "codigo_baixa": {
+          "type": "integer",
+          "deprecated": false
+        },
+        "codigo_baixa_integracao": {
+          "type": "string20",
+          "deprecated": false
+        }
+      }
+    },
+    "cancel_service_order": {
+      "path": "/servicos/osp/",
+      "call": "CancelarOS",
+      "requestType": "osCancelarRequest",
+      "fields": {
+        "cCodIntOS": {
+          "type": "string60",
+          "deprecated": false
+        },
+        "nCodOS": {
+          "type": "integer",
+          "deprecated": false
+        },
+        "cCancelarNfse": {
+          "type": "string1",
+          "deprecated": false
+        }
+      }
+    },
+    "create_pix": {
+      "path": "/financas/pix/",
+      "call": "GerarPix",
+      "requestType": "GerarPixRequest",
+      "fields": {
+        "cCodIntPix": {
+          "type": "string60",
+          "deprecated": false
+        },
+        "nCodTitulo": {
+          "type": "integer",
+          "deprecated": false
+        },
+        "vValor": {
+          "type": "decimal",
+          "deprecated": false
+        },
+        "nIdConta": {
+          "type": "integer",
+          "deprecated": false
+        },
+        "cUrlNotif": {
+          "type": "text",
+          "deprecated": false
+        },
+        "nIdCliente": {
+          "type": "integer",
+          "deprecated": false
+        },
+        "cCnpjCpf": {
+          "type": "string20",
+          "deprecated": false
+        }
+      }
+    },
+    "extend_boleto": {
+      "path": "/financas/contareceberboleto/",
+      "call": "ProrrogarBoleto",
+      "requestType": "boletoProrrogarRequest",
+      "fields": {
+        "nCodTitulo": {
+          "type": "integer",
+          "deprecated": false
+        },
+        "cCodIntTitulo": {
+          "type": "string60",
+          "deprecated": false
+        },
+        "dDtVenc": {
+          "type": "string10",
+          "deprecated": false
+        }
+      }
+    },
+    "generate_boleto": {
+      "path": "/financas/contareceberboleto/",
+      "call": "GerarBoleto",
+      "requestType": "boletoGerarRequest",
+      "fields": {
+        "nCodTitulo": {
+          "type": "integer",
+          "deprecated": false
+        },
+        "cCodIntTitulo": {
+          "type": "string60",
+          "deprecated": false
+        }
+      }
+    },
+    "get_account_receivable": {
+      "path": "/financas/contareceber/",
+      "call": "ConsultarContaReceber",
+      "requestType": "lcrChave",
+      "fields": {
+        "codigo_lancamento_omie": {
+          "type": "integer",
+          "deprecated": false
+        },
+        "codigo_lancamento_integracao": {
+          "type": "string60",
+          "deprecated": false
+        }
+      }
+    },
+    "get_boleto": {
+      "path": "/financas/contareceberboleto/",
+      "call": "ObterBoleto",
+      "requestType": "boletoObterRequest",
+      "fields": {
+        "nCodTitulo": {
+          "type": "integer",
+          "deprecated": false
+        },
+        "cCodIntTitulo": {
+          "type": "string60",
+          "deprecated": false
+        }
+      }
+    },
+    "get_pix_qrcode": {
+      "path": "/financas/pix/",
+      "call": "GerarQrCodePix",
+      "requestType": "GerarQrCodePixRequest",
+      "fields": {
+        "nIdConta": {
+          "type": "integer",
+          "deprecated": false
+        }
+      }
+    },
+    "get_pix_status": {
+      "path": "/financas/pix/",
+      "call": "ObterStatusPix",
+      "requestType": "ObterStatusPixRequest",
+      "fields": {
+        "nIdPix": {
+          "type": "integer",
+          "deprecated": false
+        },
+        "cCodIntPix": {
+          "type": "string60",
+          "deprecated": false
+        },
+        "nCodTitulo": {
+          "type": "integer",
+          "deprecated": false
+        }
+      }
     }
   }
 }

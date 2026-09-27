@@ -56,7 +56,7 @@ const RETRYABLE_HTTP_STATUSES = new Set([502, 503, 504]);
  * a write — the safe default when a new tool's method doesn't match a known
  * read pattern is "don't retry it automatically", not the other way round.
  */
-function isReadOnlyMethod(call: string): boolean {
+export function isReadOnlyMethod(call: string): boolean {
   return /^(Listar|Consultar|Obter|Pesquisar|Status|Simular|Validar|Posicao)/.test(call);
 }
 
@@ -96,6 +96,12 @@ export class OmieApiError extends Error {
   readonly faultCode?: string;
   readonly faultString?: string;
   readonly raw: string;
+  /**
+   * Set when Omie refused a call as a repeat of one it just answered
+   * ("Consumo redundante detectado. Aguarde N segundos", faultstring ending
+   * in REDUNDANT): the seconds it asked to wait before sending the same call.
+   */
+  readonly retryAfterSeconds?: number;
 
   constructor(httpStatus: number, raw: string) {
     let faultCode: string | undefined;
@@ -114,6 +120,13 @@ export class OmieApiError extends Error {
     this.faultCode = faultCode;
     this.faultString = faultString;
     this.raw = raw;
+    this.retryAfterSeconds = OmieApiError.redundantWait(faultString);
+  }
+
+  private static redundantWait(faultString: string | undefined): number | undefined {
+    if (!faultString || !/REDUNDANT|consumo redundante/i.test(faultString)) return undefined;
+    const seconds = /(\d+)\s*segundo/i.exec(faultString);
+    return seconds ? Number(seconds[1]) : 0;
   }
 
   private static formatMessage(httpStatus: number, faultCode: string | undefined, faultString: string | undefined, raw: string): string {
@@ -124,6 +137,20 @@ export class OmieApiError extends Error {
         "(check the faultstring/faultcode below if present) and wait before trying again." +
         (faultString ? `\nfaultstring: ${faultString}` : "") +
         (faultCode ? `\nfaultcode: ${faultCode}` : "")
+      );
+    }
+    const wait = OmieApiError.redundantWait(faultString);
+    if (wait !== undefined) {
+      // Seen right after a write, when the agent re-read the record to check
+      // it: Omie refuses the same method with the same param for a short
+      // window. The generic "HTTP 500" framing read like a server failure.
+      return (
+        "Omie refused this call as a repeat of an identical one it just answered (REDUNDANT). " +
+        `Wait ${wait > 0 ? `${wait} seconds` : "a little"} before sending this exact call again. ` +
+        "A different call is not affected — to confirm a change just made, use the listing tool " +
+        "(e.g. get_financial) rather than repeating the same get_*." +
+        (faultCode ? `\nfaultcode: ${faultCode}` : "") +
+        `\nfaultstring: ${faultString}`
       );
     }
     if (faultString || faultCode) {

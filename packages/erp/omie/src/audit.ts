@@ -351,6 +351,15 @@ export function stampText(caller: Caller | undefined, now = new Date()): string 
 }
 
 /**
+ * The stamp for a note a multi-step tool writes itself, rather than one
+ * appended to a declared notes field by `stamp` below. Same rules: nothing
+ * when attribution is disabled or the caller is not a verified person.
+ */
+export function attributionText(caller: Caller | undefined, now = new Date()): string | undefined {
+  return STAMP_ENABLED && identified(caller) ? stampText(caller, now) : undefined;
+}
+
+/**
  * Omie does not publish a length limit for these fields and they are not all
  * the same width. Rather than risk turning a working write into a rejected one
  * by pushing a note over an unknown cap, the stamp is skipped when the existing

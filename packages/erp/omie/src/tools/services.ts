@@ -1,11 +1,11 @@
-import { OmieTool, listOnly, pagingSchema, withPaging, date, flag, orderingFilters, notes } from "./types.js";
+import { OmieTool, listOnly, pagingSchema, withPaging, date, flag, orderingFilters, notes, ID } from "./types.js";
 
 const OS = "/servicos/os/";
 const OSP = "/servicos/osp/";
 
 /** Identifies a service order across both the OS and OS-billing endpoints. */
 const osKey = {
-  nCodOS: { type: "number", description: "Omie service order ID" },
+  nCodOS: { type: "number", description: ID.serviceOrder },
   cCodIntOS: { type: "string", description: "Service order integration code (alternative)" },
 } as const;
 const osKeyRequired = ["nCodOS", "cCodIntOS"] as const;
@@ -53,7 +53,7 @@ const servicoPrestado = {
 
 const osHeader = {
   cCodIntOS: { type: "string", description: "Integration code for the OS (unique)" },
-  nCodCli: { type: "number", description: "Omie customer ID (from list_customers)" },
+  nCodCli: { type: "number", description: ID.customer },
   cCodIntCli: { type: "string", description: "Customer integration code (alternative to nCodCli)" },
   cNumOS: { type: "string", description: "OS number shown to the customer; generated when omitted" },
   dDtPrevisao: date("Expected date"),
@@ -66,7 +66,7 @@ const osHeader = {
 
 const osInfo = {
   cCodCateg: { type: "string", description: "Category code from the chart of accounts (list_categories)" },
-  nCodCC: { type: "number", description: "Bank account ID (get_bank_accounts)" },
+  nCodCC: { type: "number", description: ID.bankAccount },
   cCidPrestServ: { type: "string", description: "City where the service was rendered, e.g. \"SAO PAULO (SP)\"" },
   cDadosAdicNF: { type: "string", description: "Additional invoice text" },
   cNumPedido: { type: "string", description: "Customer's own order number" },
@@ -79,7 +79,8 @@ export const serviceTools: OmieTool[] = [
     name: "create_service_order",
     description:
       "Create a service order (OS) in Omie ERP (IncluirOS). This endpoint uses PascalCase blocks: " +
-      "Cabecalho + ServicosPrestados[] + InformacoesAdicionais.",
+      "Cabecalho + ServicosPrestados[] + InformacoesAdicionais. Returns nCodOS. Nothing fiscal happens " +
+      "until invoice_service_order.",
     path: OS,
     call: "IncluirOS",
     inputSchema: {
@@ -139,8 +140,8 @@ export const serviceTools: OmieTool[] = [
   {
     name: "list_service_orders",
     description:
-      "List service orders (OS) from Omie ERP. Note the stage filter is `filtrar_por_etapa` here, not " +
-      "`etapa` as on the sales order endpoint.",
+      "List service orders (OS) from Omie ERP (ListarOS). Returns nCodOS per order. Note the stage filter " +
+      "is `filtrar_por_etapa` here, not `etapa` as on the sales order endpoint.",
     path: OS,
     call: "ListarOS",
     inputSchema: {
@@ -149,7 +150,7 @@ export const serviceTools: OmieTool[] = [
         ...pagingSchema("snake"),
         filtrar_por_etapa: { type: "string", description: "Stage filter (10=OS, 20=Executar, 50=Faturar, 60=Faturado)" },
         filtrar_por_status: { type: "string", enum: ["F", "N", "C"], description: "Status: F=billed, N=not billed, C=cancelled" },
-        filtrar_por_cliente: { type: "number", description: "Filter by customer ID" },
+        filtrar_por_cliente: { type: "number", description: `Filter by ${ID.customer}` },
         filtrar_por_data_de: date("Inclusion / change date from"),
         filtrar_por_data_ate: date("Inclusion / change date to"),
         filtrar_por_data_previsao_de: date("Expected date from"),
@@ -164,7 +165,7 @@ export const serviceTools: OmieTool[] = [
   },
   {
     name: "get_service_order",
-    description: "Consult a specific service order in Omie ERP (ConsultarOS)",
+    description: "Consult a specific service order in Omie ERP (ConsultarOS) by nCodOS, integration code or the OS number shown to the customer",
     path: OS,
     call: "ConsultarOS",
     inputSchema: {
@@ -203,7 +204,9 @@ export const serviceTools: OmieTool[] = [
   },
   {
     name: "change_service_order_stage",
-    description: "Move a service order to another stage in Omie ERP (TrocarEtapaOS)",
+    description:
+      "Move a service order to another stage in Omie ERP (TrocarEtapaOS). Changing the stage does not " +
+      "bill the OS — use invoice_service_order for that.",
     path: OS,
     call: "TrocarEtapaOS",
     inputSchema: {
@@ -229,18 +232,31 @@ export const serviceTools: OmieTool[] = [
   {
     name: "invoice_service_order",
     description:
-      "Bill a service order in Omie ERP (FaturarOS), issuing the NFS-e — the service-side counterpart " +
-      "of invoice_sales_order.",
+      "Bill a service order in Omie ERP (FaturarOS): issues the NFS-e at the city hall and creates the AR " +
+      "title(s) — a fiscal act, confirm with the person first and run validate_service_order before. The " +
+      "undo is cancel_service_order with cCancelarNfse=\"S\". The service-side counterpart of " +
+      "invoice_sales_order.",
     path: OSP,
     call: "FaturarOS",
     inputSchema: { type: "object", properties: osKey, anyOfRequired: osKeyRequired },
   },
   {
     name: "cancel_service_order",
-    description: "Cancel a service order in Omie ERP (CancelarOS)",
+    description:
+      "Cancel a service order in Omie ERP (CancelarOS). On a billed OS this can also CANCEL ITS NFS-e at the " +
+      "city hall — a fiscal, irreversible act, and Omie's own default when the flag is absent. So " +
+      "cCancelarNfse is required here: \"S\" cancels the NFS-e too, \"N\" keeps it. Confirm with the person first.",
     path: OSP,
     call: "CancelarOS",
-    inputSchema: { type: "object", properties: osKey, anyOfRequired: osKeyRequired },
+    inputSchema: {
+      type: "object",
+      properties: {
+        ...osKey,
+        cCancelarNfse: flag("Also cancel the OS's NFS-e at the city hall (S) or keep it (N) — required, no default"),
+      },
+      required: ["cCancelarNfse"],
+      anyOfRequired: osKeyRequired,
+    },
   },
   {
     name: "list_services",
@@ -278,8 +294,8 @@ export const serviceTools: OmieTool[] = [
         dEmiInicial: date("Start emission date"),
         dEmiFinal: date("End emission date"),
         nNumeroNFSe: { type: "string", description: "NFS-e number" },
-        nCodigoCliente: { type: "number", description: "Filter by customer ID" },
-        nCodigoOS: { type: "number", description: "Filter by service order ID" },
+        nCodigoCliente: { type: "number", description: `Filter by ${ID.customer}` },
+        nCodigoOS: { type: "number", description: `Filter by ${ID.serviceOrder}` },
         cStatusNFSe: { type: "string", enum: ["C", "F", "N"], description: "Status: C=cancelled, F=billed, N=not billed" },
         cExibirDescricao: flag("Include the service description"),
       },

@@ -75,6 +75,20 @@ TOOL_METHODS: dict[str, tuple[str, str]] = {
     "get_bank_statement": ("financas/extrato", "ListarExtrato"),
     "list_open_titles": ("financas/resumo", "ObterListaEmAberto"),
     "list_pix": ("financas/pix", "ListarPix"),
+    # finance / billing writes whose Omie defaults or key spellings have bitten
+    # (lDel deletes the title by default; codigo_baixa_integracao was missing)
+    "get_account_receivable": ("financas/contareceber", "ConsultarContaReceber"),
+    "cancel_receipt": ("financas/contareceber", "CancelarRecebimento"),
+    "cancel_payment": ("financas/contapagar", "CancelarPagamento"),
+    "create_pix": ("financas/pix", "GerarPix"),
+    "get_pix_qrcode": ("financas/pix", "GerarQrCodePix"),
+    "get_pix_status": ("financas/pix", "ObterStatusPix"),
+    "cancel_pix": ("financas/pix", "CancelarPix"),
+    "generate_boleto": ("financas/contareceberboleto", "GerarBoleto"),
+    "get_boleto": ("financas/contareceberboleto", "ObterBoleto"),
+    "extend_boleto": ("financas/contareceberboleto", "ProrrogarBoleto"),
+    "cancel_boleto": ("financas/contareceberboleto", "CancelarBoleto"),
+    "cancel_service_order": ("servicos/osp", "CancelarOS"),
     # stock
     "get_stock_position": ("estoque/consulta", "ListarPosEstoque"),
     "list_stock_movements": ("estoque/consulta", "ListarMovimentoEstoque"),
