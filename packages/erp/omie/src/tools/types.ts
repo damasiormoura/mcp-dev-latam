@@ -34,7 +34,40 @@ export type OmieTool = {
    * one place it can be checked against it.
    */
   notes?: NotesTarget;
+  /**
+   * For the rare tool that cannot be one Omie call: it has to read the record
+   * before deciding whether the write is safe, or confirm afterwards what the
+   * write actually did. When present, dispatch hands the validated arguments
+   * here instead of sending `param` to (`path`, `call`); those two still name
+   * the call that commits the change, so the audit trail and the docs stay
+   * keyed on it.
+   *
+   * Every Omie call must go through `ctx.request`, which records each one in
+   * the audit log — a multi-step tool must not become a way to write to the
+   * ERP without a trail. Throw `ToolRefusal` to decline without it counting as
+   * an Omie error.
+   */
+  run?: (args: Record<string, unknown>, ctx: RunContext) => Promise<unknown>;
 };
+
+export type RunContext = {
+  /** omieRequest with the single-element `param` array built for you, audited. */
+  request: (path: string, call: string, param: Record<string, unknown>) => Promise<any>;
+  /** Attribution text for a note written into Omie, or undefined when none may be written. */
+  attribution: string | undefined;
+  now: Date;
+};
+
+/**
+ * A multi-step tool declining to proceed — a guard, not a failure. Its message
+ * goes back to the agent verbatim, so it says what was found and what to do.
+ */
+export class ToolRefusal extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "ToolRefusal";
+  }
+}
 
 /**
  * Omie caps every listing at 100 records per page. Without a declared maximum

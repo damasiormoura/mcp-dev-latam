@@ -155,6 +155,27 @@ describe("OmieApiError", () => {
     expect(err.message).toMatch(/30 minutes/);
     expect(err.message).toMatch(/do not retry/i);
   });
+
+  it("explains a REDUNDANT refusal and exposes how long Omie asked to wait", async () => {
+    const { OmieApiError } = await import("../omie.js");
+    // Verbatim from production, 2026-09-27, re-reading a title just cancelled.
+    const err = new OmieApiError(500, JSON.stringify({
+      faultstring: "ERROR: Consumo redundante detectado. Aguarde 44 segundos para tentar novamente (REDUNDANT).",
+      faultcode: "SOAP-ENV:Client-6",
+    }));
+
+    expect(err.retryAfterSeconds).toBe(44);
+    expect(err.message).toMatch(/Wait 44 seconds/);
+    expect(err.message).toMatch(/listing tool/);
+    expect(err.message).toContain("SOAP-ENV:Client-6");
+  });
+
+  it("leaves retryAfterSeconds unset on an ordinary business error", async () => {
+    const { OmieApiError } = await import("../omie.js");
+    const err = new OmieApiError(500, JSON.stringify({ faultstring: "Cliente não encontrado.", faultcode: "SOAP-ENV:Client-101" }));
+
+    expect(err.retryAfterSeconds).toBeUndefined();
+  });
 });
 
 describe("omieRequest — credentials", () => {

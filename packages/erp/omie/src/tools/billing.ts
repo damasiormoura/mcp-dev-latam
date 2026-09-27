@@ -107,7 +107,10 @@ export const billingTools: OmieTool[] = [
   },
   {
     name: "cancel_boleto",
-    description: "Cancel a boleto in Omie ERP (CancelarBoleto)",
+    description:
+      "Cancel the boleto of an AR title in Omie ERP (CancelarBoleto, on /financas/contareceberboleto/). " +
+      "Cancels the boleto only — it does not cancel the receivable itself; to cancel the title " +
+      "(status CANCELADO) use cancel_account_receivable.",
     path: BOLETO,
     call: "CancelarBoleto",
     inputSchema: { type: "object", properties: titleRef, anyOfRequired: titleRefRequired },

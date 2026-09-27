@@ -46,15 +46,16 @@ import {
 
 import { omieRequest, validateArgs, CREDENTIALS_CONFIGURED } from "./omie.js";
 import { TOOLS, findTool, INSTRUCTIONS } from "./tools/index.js";
-import { type Caller, buildEntry, closeAuditLog, currentCaller, record, reopenAuditLog, stamp, withCaller } from "./audit.js";
+import { ToolRefusal } from "./tools/types.js";
+import { type Caller, attributionText, buildEntry, closeAuditLog, currentCaller, record, reopenAuditLog, stamp, withCaller } from "./audit.js";
 
-const VERSION = "0.7.2";
+const VERSION = "0.8.0";
 
 const DEMO_MODE = process.argv.includes("--demo") || process.env.MCP_DEMO === "true";
 
 // Curated, realistic responses — shaped from the actual Omie response *type*
 // fields (ConsultarContaPagar's own conta_pagar_lancar_pagamento_resposta,
-// GerarPix's GerarPixResponse, and so on), not invented. 22 of 82 tools have
+// GerarPix's GerarPixResponse, and so on), not invented. 22 of 83 tools have
 // one; the rest fall back to echoing the validated arguments (see
 // demoFallback below) rather than a shape this server hasn't verified against
 // the API — extending this further means pulling more response *types* from
@@ -221,6 +222,37 @@ function buildServer(): Server {
         outcome: "demo", durationMs: since(), args, stamped,
       }));
       return { content: [{ type: "text", text: JSON.stringify(withReadAt(DEMO_RESPONSES[name] ?? demoFallback(name, param)), null, 2) }] };
+    }
+
+    if (tool.run) {
+      // Each Omie call the tool makes gets its own entry, under this tool's
+      // name: the read that justified a write, the note, and the write itself
+      // are separate facts in the ERP and the trail should show all of them.
+      const request = async (path: string, call: string, p: Record<string, unknown>) => {
+        const stepStart = Date.now();
+        try {
+          const result = await omieRequest(path, call, [p]);
+          record(buildEntry({ caller, tool: name, path, call, outcome: "ok", durationMs: Date.now() - stepStart, args: p, result }));
+          return result;
+        } catch (err) {
+          const message = err instanceof Error ? err.message : String(err);
+          record(buildEntry({ caller, tool: name, path, call, outcome: "error", durationMs: Date.now() - stepStart, args: p, error: message }));
+          throw err;
+        }
+      };
+      try {
+        const result = await tool.run(args, { request, attribution: attributionText(caller), now: new Date() });
+        return { content: [{ type: "text", text: JSON.stringify(withReadAt(result), null, 2) }] };
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        if (err instanceof ToolRefusal) {
+          record(buildEntry({
+            caller, tool: name, path: tool.path, call: tool.call,
+            outcome: "invalid", durationMs: since(), args, error: message,
+          }));
+        }
+        return { content: [{ type: "text", text: `Error: ${message}` }], isError: true };
+      }
     }
 
     try {

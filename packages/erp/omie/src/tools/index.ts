@@ -5,6 +5,7 @@ import { salesTools } from "./sales.js";
 import { purchaseTools } from "./purchases.js";
 import { serviceTools } from "./services.js";
 import { financeTools } from "./finance.js";
+import { cancellationTools } from "./cancellation.js";
 import { billingTools } from "./billing.js";
 import { stockTools } from "./stock.js";
 import { registryTools } from "./registry.js";
@@ -58,6 +59,7 @@ export const TOOLS: OmieTool[] = [
   ...purchaseTools,
   ...serviceTools,
   ...financeTools,
+  ...cancellationTools,
   ...billingTools,
   ...stockTools,
   ...registryTools,

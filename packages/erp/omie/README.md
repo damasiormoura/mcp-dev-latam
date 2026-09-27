@@ -60,7 +60,7 @@ write tools change a production ERP. Every object result carries `read_at`;
 every `list_*` / `get_*` description repeats the clause, because not every MCP
 client injects server instructions.
 
-## Tools (82)
+## Tools (83)
 
 > Conformance status of each tool against the official Omie API reference:
 > [`API-AUDIT.md`](./API-AUDIT.md). Every tool carries the Omie method it maps
@@ -131,7 +131,7 @@ client injects server instructions.
 | `list_services` | `ListarCadastroServico` | List the service catalogue in Omie ERP |
 | `list_nfse` | `ListarNFSEs` | List issued service invoices (NFS-e) in Omie ERP |
 
-### Finance — receivables, payables, ledger (20)
+### Finance — receivables, payables, ledger (21)
 
 | Tool | Omie method | Purpose |
 |---|---|---|
@@ -140,7 +140,8 @@ client injects server instructions.
 | `get_account_receivable` | `ConsultarContaReceber` | Consult a single accounts receivable title in Omie ERP |
 | `update_account_receivable` | `AlterarContaReceber` | Update an accounts receivable title in Omie ERP |
 | `receive_account_receivable` | `LancarRecebimento` | Settle / record a receipt (baixa) against an AR title in Omie ERP |
-| `cancel_receipt` | `CancelarRecebimento` | Cancel a receipt previously settled on an AR title in Omie ERP |
+| `cancel_receipt` | `CancelarRecebimento` | Undo a receipt (baixa) settled on an AR title — the title goes back to open; does not cancel it |
+| `cancel_account_receivable` | `CancelarContaReceber` | Cancel an AR title (status CANCELADO), leaving its invoice untouched. Multi-step: refuses a settled title or one carrying a boleto without confirmation, notes the reason and caller, confirms the new status |
 | `create_account_payable` | `IncluirContaPagar` | Create an accounts payable entry in Omie ERP |
 | `list_accounts_payable` | `ListarContasPagar` | List accounts payable titles in Omie ERP |
 | `get_account_payable` | `ConsultarContaPagar` | Consult a single accounts payable title in Omie ERP |
@@ -167,7 +168,7 @@ client injects server instructions.
 | `cancel_pix` | `CancelarPix` | Cancel a PIX charge in Omie ERP |
 | `generate_boleto` | `GerarBoleto` | Generate a boleto for an accounts receivable title in Omie ERP |
 | `get_boleto` | `ObterBoleto` | Get the download link for a boleto already generated in Omie ERP |
-| `cancel_boleto` | `CancelarBoleto` | Cancel a boleto in Omie ERP |
+| `cancel_boleto` | `CancelarBoleto` | Cancel the boleto of an AR title — not the title itself (see `cancel_account_receivable`) |
 
 ### Stock (6)
 

@@ -96,7 +96,11 @@ export const financeTools: OmieTool[] = [
   },
   {
     name: "get_account_receivable",
-    description: "Consult a single accounts receivable title in Omie ERP",
+    description:
+      "Consult a single accounts receivable title in Omie ERP (ConsultarContaReceber). Right after a write " +
+      "to the title this may still return the previous state for a few seconds, and repeating the identical " +
+      "call at once is refused (REDUNDANT) — to confirm a change just made, use get_financial filtered by " +
+      "customer instead.",
     path: AR,
     call: "ConsultarContaReceber",
     inputSchema: { type: "object", properties: titleKey, anyOfRequired: titleKeyRequired },
@@ -132,7 +136,10 @@ export const financeTools: OmieTool[] = [
   },
   {
     name: "cancel_receipt",
-    description: "Cancel a receipt previously settled on an AR title in Omie ERP (CancelarRecebimento)",
+    description:
+      "Undo a receipt (baixa) previously settled on an AR title in Omie ERP (CancelarRecebimento) — the " +
+      "title goes back to open. This does not cancel the title: to do that afterwards, use " +
+      "cancel_account_receivable. codigo_baixa is the settlement ID returned by receive_account_receivable.",
     path: AR,
     call: "CancelarRecebimento",
     inputSchema: {

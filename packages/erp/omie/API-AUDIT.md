@@ -534,6 +534,7 @@ nem baixar um recebimento.
 | ✅ `receive_account_receivable` | `/financas/contareceber/ LancarRecebimento` |
 | ✅ `update_account_receivable` | `AlterarContaReceber` / `UpsertContaReceber` |
 | ✅ `cancel_receipt` | `CancelarRecebimento` |
+| ✅ `cancel_account_receivable` | `CancelarContaReceber` — documentado como "cancelamento do boleto", mas verificado em produção (2026-09-27): cancela o título (status CANCELADO) |
 | `reconcile_receipt` | `ConciliarRecebimento` / `DesconciliarRecebimento` |
 | ✅ `update_account_payable` | `/financas/contapagar/ AlterarContaPagar` |
 | ✅ `cancel_payment` | `CancelarPagamento` |

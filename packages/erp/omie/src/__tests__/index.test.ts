@@ -187,6 +187,9 @@ describe("mcp-omie", () => {
       const tools = await loadTools();
 
       for (const tool of tools) {
+        // Multi-step tools read before they write, so their first request is
+        // not (path, call); they get their own step-by-step tests below.
+        if (tool.run) continue;
         mockFetch.mockReset();
         const { url, body } = await call(tool.name, MIN_ARGS[tool.name] ?? {});
 
@@ -638,6 +641,172 @@ describe("mcp-omie", () => {
       const body = JSON.parse(mockFetch.mock.calls[0][1].body);
       expect(body.param[0]).not.toHaveProperty("observacoes");
       expect(auditLines(stderr)[0]).toMatchObject({ actor: "unauthenticated", stamped: false });
+    });
+  });
+
+  /**
+   * cancel_account_receivable is the one multi-step tool: read, guard, note,
+   * cancel, confirm. The title shapes below are trimmed from the production
+   * titles cancelled by hand on 2026-09-27 that motivated it.
+   */
+  describe("cancel_account_receivable", () => {
+    const OPEN_TITLE = {
+      codigo_lancamento_omie: 5962280604, codigo_cliente_fornecedor: 5960133581,
+      status_titulo: "A VENCER", observacao: "A CANCELAR - título duplicado.",
+      data_vencimento: "30/09/2026", valor_documento: 7800,
+      boleto: { cGerado: "", cNumBancario: "", cNumBoleto: "" }, codigo_barras_ficha_compensacao: "",
+    };
+    const WITH_BOLETO = {
+      ...OPEN_TITLE, codigo_lancamento_omie: 5962772133, codigo_cliente_fornecedor: 5961454237,
+      boleto: { cGerado: "", cNumBancario: "600000020", cNumBoleto: "" },
+      codigo_barras_ficha_compensacao: "74891160090000200737543356521005115830000155000",
+    };
+    const SIBLING = {
+      ...WITH_BOLETO, codigo_lancamento_omie: 5962788418, data_vencimento: "28/09/2026", valor_documento: 1550,
+      boleto: { cGerado: "S", cNumBancario: "600000020", cNumBoleto: "600000020" },
+    };
+    const CANCEL_OK = { codigo_lancamento_omie: 5962280604, codigo_status: "0", descricao_status: "Boleto cancelado com sucesso!" };
+
+    function respond(...bodies: unknown[]) {
+      for (const b of bodies) mockFetch.mockResolvedValueOnce({ ok: true, json: () => Promise.resolve(b) });
+    }
+    const sent = () => mockFetch.mock.calls.map(([, opts]) => {
+      const body = JSON.parse(opts.body);
+      return { call: body.call, param: body.param[0] };
+    });
+    const run = (args: Record<string, unknown>) =>
+      callToolHandler({ params: { name: "cancel_account_receivable", arguments: args } });
+
+    it("reads, notes, cancels and confirms an open title", async () => {
+      respond(OPEN_TITLE, {}, CANCEL_OK, { conta_receber_cadastro: [{ ...OPEN_TITLE, status_titulo: "CANCELADO" }] });
+
+      const result = await run({ codigo_lancamento_omie: 5962280604, motivo: "título duplicado" });
+      const body = JSON.parse(result.content[0].text);
+
+      expect(result.isError).toBeUndefined();
+      expect(sent().map((s) => s.call)).toEqual([
+        "ConsultarContaReceber", "AlterarContaReceber", "CancelarContaReceber", "ListarContasReceber",
+      ]);
+      // The cancel call spells the key chave_lancamento, unlike every other AR method.
+      expect(sent()[2].param).toEqual({ chave_lancamento: 5962280604 });
+      // Existing notes are kept, the reason appended.
+      expect(sent()[1].param).toEqual({
+        codigo_lancamento_omie: 5962280604,
+        observacao: "A CANCELAR - título duplicado. Cancelamento solicitado: título duplicado.",
+      });
+      expect(sent()[3].param).toMatchObject({ filtrar_cliente: 5960133581 });
+      expect(body.verificacao).toEqual({ status_titulo: "CANCELADO", confirmado: true });
+      expect(body.status_anterior).toBe("A VENCER");
+    });
+
+    it("stamps the verified caller into the note", async () => {
+      const { withCaller } = await import("../audit.js");
+      respond(OPEN_TITLE, {}, CANCEL_OK, { conta_receber_cadastro: [] });
+
+      await withCaller({ sub: "u-1", email: "rodrigo@example.com" }, () =>
+        run({ codigo_lancamento_omie: 5962280604, motivo: "duplicado" })
+      );
+
+      expect(sent()[1].param.observacao).toMatch(/Cancelamento solicitado: duplicado\. \[via MCP: rodrigo@example\.com at /);
+    });
+
+    it("does nothing to a title that is already cancelled", async () => {
+      respond({ ...OPEN_TITLE, status_titulo: "CANCELADO" });
+
+      const body = JSON.parse((await run({ codigo_lancamento_omie: 5962280604, motivo: "x" })).content[0].text);
+
+      expect(sent()).toHaveLength(1);
+      expect(body.ja_cancelado).toBe(true);
+    });
+
+    it("refuses a settled title and points at cancel_receipt", async () => {
+      respond({ ...OPEN_TITLE, status_titulo: "RECEBIDO" });
+
+      const result = await run({ codigo_lancamento_omie: 5962280604, motivo: "x" });
+
+      expect(result.isError).toBe(true);
+      expect(result.content[0].text).toContain("cancel_receipt");
+      expect(sent().map((s) => s.call)).toEqual(["ConsultarContaReceber"]);
+    });
+
+    it("refuses a title carrying a boleto, naming the open title that shares it", async () => {
+      respond(WITH_BOLETO, { conta_receber_cadastro: [WITH_BOLETO, SIBLING] });
+
+      const result = await run({ codigo_lancamento_omie: 5962772133, motivo: "duplicado" });
+
+      expect(result.isError).toBe(true);
+      expect(result.content[0].text).toContain("600000020");
+      expect(result.content[0].text).toContain("SAME boleto: 5962788418");
+      expect(result.content[0].text).toContain('confirmar_boleto: "600000020"');
+      // Nothing was written.
+      expect(sent().map((s) => s.call)).toEqual(["ConsultarContaReceber", "ListarContasReceber"]);
+    });
+
+    it("proceeds on a boleto title once the boleto number is echoed back", async () => {
+      respond(WITH_BOLETO, {}, { ...CANCEL_OK, codigo_lancamento_omie: 5962772133 }, { conta_receber_cadastro: [] });
+
+      const result = await run({ codigo_lancamento_omie: 5962772133, motivo: "duplicado", confirmar_boleto: "600000020" });
+
+      expect(result.isError).toBeUndefined();
+      expect(sent().map((s) => s.call)).toContain("CancelarContaReceber");
+    });
+
+    it("rejects a confirmation that does not match the boleto", async () => {
+      respond(WITH_BOLETO, { conta_receber_cadastro: [] });
+
+      const result = await run({ codigo_lancamento_omie: 5962772133, motivo: "duplicado", confirmar_boleto: "S" });
+
+      expect(result.isError).toBe(true);
+      expect(sent().map((s) => s.call)).not.toContain("CancelarContaReceber");
+    });
+
+    it("reports a cancel Omie did not confirm, saying the note was already written", async () => {
+      respond(OPEN_TITLE, {}, { codigo_status: "5", descricao_status: "Título bloqueado" });
+
+      const result = await run({ codigo_lancamento_omie: 5962280604, motivo: "x" });
+
+      expect(result.isError).toBe(true);
+      expect(result.content[0].text).toContain("Título bloqueado");
+      expect(result.content[0].text).toContain("note was already written");
+    });
+
+    it("still succeeds when only the confirming listing fails", async () => {
+      respond(OPEN_TITLE, {}, CANCEL_OK);
+      mockFetch.mockResolvedValueOnce({
+        ok: false, status: 500,
+        text: () => Promise.resolve(JSON.stringify({ faultstring: "Consumo redundante detectado. Aguarde 30 segundos (REDUNDANT).", faultcode: "SOAP-ENV:Client-6" })),
+      });
+
+      const result = await run({ codigo_lancamento_omie: 5962280604, motivo: "x" });
+      const body = JSON.parse(result.content[0].text);
+
+      expect(result.isError).toBeUndefined();
+      expect(body.verificacao.confirmado).toBe(false);
+      expect(body.verificacao.detalhe).toContain("REDUNDANT");
+    });
+
+    it("rejects a blank motivo before touching Omie", async () => {
+      const result = await run({ codigo_lancamento_omie: 5962280604, motivo: "  " });
+
+      expect(result.isError).toBe(true);
+      expect(mockFetch).not.toHaveBeenCalled();
+    });
+
+    it("audits every Omie call it makes, each under the tool's name", async () => {
+      const stderr = vi.spyOn(console, "error").mockImplementation(() => {});
+      try {
+        respond(OPEN_TITLE, {}, CANCEL_OK, { conta_receber_cadastro: [] });
+        await run({ codigo_lancamento_omie: 5962280604, motivo: "x" });
+
+        const entries = stderr.mock.calls.map((c) => String(c[0])).filter((l) => l.startsWith("AUDIT "))
+          .map((l) => JSON.parse(l.slice(6)));
+        expect(entries.map((e) => e.call)).toEqual([
+          "ConsultarContaReceber", "AlterarContaReceber", "CancelarContaReceber", "ListarContasReceber",
+        ]);
+        expect(entries.every((e) => e.tool === "cancel_account_receivable" && e.outcome === "ok")).toBe(true);
+      } finally {
+        stderr.mockRestore();
+      }
     });
   });
 });
