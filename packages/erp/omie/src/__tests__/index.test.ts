@@ -234,6 +234,52 @@ describe("mcp-omie", () => {
       expect(text).toContain("informar o número de parcelas");
     });
 
+    it("list_invoices keeps pedido/titulos when the summary and the order details are both asked for", async () => {
+      // Production, NF 3993: with both flags Omie returned pedido {} and titulos [].
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: () => Promise.resolve({ nfCadastro: [{ det: [{ prod: {} }], pedido: { cNumPedido: "8" }, titulos: [{ nValorTitulo: 7800 }], total: {} }] }),
+      });
+      const result = await callToolHandler({
+        params: { name: "list_invoices", arguments: { nNFInicial: 3993, cApenasResumo: "S", cDetalhesPedido: "S" } },
+      });
+
+      const sent = JSON.parse(mockFetch.mock.calls[0][1].body).param[0];
+      expect(sent).toMatchObject({ cApenasResumo: "N", cDetalhesPedido: "S" });
+      const [nf] = JSON.parse(result.content[0].text).nfCadastro;
+      expect(nf).not.toHaveProperty("det");
+      expect(nf.pedido).toEqual({ cNumPedido: "8" });
+      expect(nf.titulos).toHaveLength(1);
+    });
+
+    it("list_invoices sends the summary flag untouched on its own", async () => {
+      expect((await call("list_invoices", { cApenasResumo: "S" })).body.param[0]).toMatchObject({ cApenasResumo: "S" });
+    });
+
+    it("never hands the agent the pre-signed bank-logo URL", async () => {
+      const row = { nIdTitulo: 1, vDoc: 652, cUrlLogoBanco: "https://cdn.omie.com.br/x.png?AWSAccessKeyId=AKIA&Signature=abc" };
+      for (const name of ["list_open_titles", "get_finance_summary"]) {
+        mockFetch.mockReset();
+        mockFetch.mockResolvedValueOnce({ ok: true, json: () => Promise.resolve({ ListaEmEberto: [row], nested: { contas: [row] } }) });
+        const result = await callToolHandler({ params: { name, arguments: MIN_ARGS[name] ?? {} } });
+        const text = result.content[0].text;
+        expect(text, name).not.toContain("AWSAccessKeyId");
+        expect(JSON.parse(text).ListaEmEberto[0], name).toMatchObject({ nIdTitulo: 1, vDoc: 652 });
+      }
+    });
+
+    it("decodes the HTML entities Omie leaves in text", async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: () => Promise.resolve({ produto_servico_cadastro: [{ descricao: "BOBINA ELETROGAS DE 1/2&quot;", valor_unitario: 580 }] }),
+      });
+      const result = await callToolHandler({ params: { name: "list_products", arguments: {} } });
+
+      expect(JSON.parse(result.content[0].text).produto_servico_cadastro[0]).toEqual({
+        descricao: 'BOBINA ELETROGAS DE 1/2"', valor_unitario: 580,
+      });
+    });
+
     it("cancel_receipt accepts the settlement integration code as an alternative", async () => {
       const { body } = await call("cancel_receipt", { codigo_baixa_integracao: "BX-1" });
       expect(body.param[0]).toEqual({ codigo_baixa_integracao: "BX-1" });

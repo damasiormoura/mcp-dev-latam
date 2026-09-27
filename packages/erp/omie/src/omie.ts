@@ -202,6 +202,46 @@ export async function omieRequest(path: string, call: string, param: unknown[]):
 }
 
 /**
+ * Omie stores some free text HTML-escaped — a product described as
+ * `BOBINA ELETROGAS DE 1/2&quot;` comes back that way from ListarProdutos —
+ * and hands it to the agent verbatim, which then quotes the entity to the
+ * person or, worse, writes it back. Decoded once, in a single pass, so an
+ * escaped entity ("&amp;quot;") becomes the entity text and no further.
+ */
+const NAMED_ENTITIES: Record<string, string> = {
+  quot: '"', amp: "&", lt: "<", gt: ">", apos: "'", nbsp: " ",
+  aacute: "á", eacute: "é", iacute: "í", oacute: "ó", uacute: "ú",
+  Aacute: "Á", Eacute: "É", Iacute: "Í", Oacute: "Ó", Uacute: "Ú",
+  atilde: "ã", otilde: "õ", Atilde: "Ã", Otilde: "Õ",
+  acirc: "â", ecirc: "ê", ocirc: "ô", Acirc: "Â", Ecirc: "Ê", Ocirc: "Ô",
+  agrave: "à", Agrave: "À", ccedil: "ç", Ccedil: "Ç", uuml: "ü", Uuml: "Ü",
+  ordm: "º", ordf: "ª", deg: "°",
+};
+
+function decodeString(text: string): string {
+  if (!text.includes("&")) return text;
+  return text.replace(/&(#x[0-9a-fA-F]+|#[0-9]+|[A-Za-z]+);/g, (whole, body: string) => {
+    if (body[0] === "#") {
+      const code = body[1] === "x" || body[1] === "X" ? parseInt(body.slice(2), 16) : parseInt(body.slice(1), 10);
+      return Number.isFinite(code) && code > 0 && code <= 0x10ffff ? String.fromCodePoint(code) : whole;
+    }
+    return NAMED_ENTITIES[body] ?? whole;
+  });
+}
+
+/** Decodes HTML entities in every string of an Omie response, keys included. */
+export function decodeEntities(value: unknown): unknown {
+  if (typeof value === "string") return decodeString(value);
+  if (Array.isArray(value)) return value.map(decodeEntities);
+  if (value !== null && typeof value === "object") {
+    return Object.fromEntries(
+      Object.entries(value as Record<string, unknown>).map(([k, v]) => [decodeString(k), decodeEntities(v)])
+    );
+  }
+  return value;
+}
+
+/**
  * Minimal request validation.
  *
  * The Omie API answers a malformed `param` with an HTTP 500 carrying a

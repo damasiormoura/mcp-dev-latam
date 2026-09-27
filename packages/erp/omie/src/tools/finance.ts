@@ -54,6 +54,20 @@ function settlementFields(kind: "receipt" | "payment") {
   };
 }
 
+/**
+ * The /financas/resumo/ responses carry cUrlLogoBanco: a pre-signed S3 URL for
+ * the bank's logo, with Omie's AWSAccessKeyId and Signature in the query
+ * string. Useless to an agent, and a credential-shaped string it has no reason
+ * to hold or repeat — dropped wherever it appears in the response.
+ */
+function withoutBankLogo(value: any): any {
+  if (Array.isArray(value)) return value.map(withoutBankLogo);
+  if (value === null || typeof value !== "object") return value;
+  return Object.fromEntries(
+    Object.entries(value).filter(([k]) => k !== "cUrlLogoBanco").map(([k, v]) => [k, withoutBankLogo(v)])
+  );
+}
+
 export const financeTools: OmieTool[] = [
   // --- Accounts receivable ---------------------------------------------------
   {
@@ -502,6 +516,7 @@ export const financeTools: OmieTool[] = [
       "totals rather than a title-by-title listing. Defaults to today when dDia is omitted.",
     path: "/financas/resumo/",
     call: "ObterResumoFinancas",
+    transform: withoutBankLogo,
     inputSchema: {
       type: "object",
       properties: {
@@ -534,5 +549,6 @@ export const financeTools: OmieTool[] = [
       required: ["cTipo"],
     },
     param: withPaging("n"),
+    transform: withoutBankLogo,
   },
 ];

@@ -44,12 +44,12 @@ import {
   ListToolsRequestSchema,
 } from "@modelcontextprotocol/sdk/types.js";
 
-import { omieRequest, validateArgs, CREDENTIALS_CONFIGURED } from "./omie.js";
+import { omieRequest, validateArgs, decodeEntities, CREDENTIALS_CONFIGURED } from "./omie.js";
 import { TOOLS, findTool, INSTRUCTIONS, annotationsFor } from "./tools/index.js";
 import { ToolRefusal } from "./tools/types.js";
 import { type Caller, attributionText, buildEntry, closeAuditLog, currentCaller, record, reopenAuditLog, stamp, withCaller } from "./audit.js";
 
-const VERSION = "0.8.1";
+const VERSION = "0.8.2";
 
 const DEMO_MODE = process.argv.includes("--demo") || process.env.MCP_DEMO === "true";
 
@@ -247,7 +247,7 @@ function buildServer(): Server {
       };
       try {
         const result = await tool.run(args, { request, attribution: attributionText(caller), now: new Date() });
-        return { content: [{ type: "text", text: JSON.stringify(withReadAt(result), null, 2) }] };
+        return { content: [{ type: "text", text: JSON.stringify(withReadAt(decodeEntities(result)), null, 2) }] };
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
         if (err instanceof ToolRefusal) {
@@ -266,7 +266,8 @@ function buildServer(): Server {
         caller, tool: name, path: tool.path, call: tool.call,
         outcome: "ok", durationMs: since(), args, result, stamped,
       }));
-      return { content: [{ type: "text", text: JSON.stringify(withReadAt(result), null, 2) }] };
+      const shaped = decodeEntities(tool.transform ? tool.transform(result, args) : result);
+      return { content: [{ type: "text", text: JSON.stringify(withReadAt(shaped), null, 2) }] };
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       record(buildEntry({
