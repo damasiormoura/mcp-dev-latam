@@ -444,7 +444,9 @@ export const salesTools: OmieTool[] = [
       "List or search invoices (NF) from Omie ERP (ListarNF); returns nIdNF, the ID create_invoice and " +
       "get_invoice_pdf take. cDetalhesPedido=\"S\" fills `pedido` and `titulos` for an NF issued from a " +
       "sales order (NFs with no originating order leave them empty). cApenasResumo=\"S\" drops the item " +
-      "lines (det) but keeps the full `total` block. Set cApenasResumo=\"S\" when scanning a period — the " +
+      "lines (det) but keeps the full `total` block; Omie itself would also empty `pedido` and `titulos`, so " +
+      "when both flags are set this tool asks for the full NF and removes `det` itself. Set " +
+      "cApenasResumo=\"S\" when scanning a period — the " +
       "full NF record is large, and the summary carries the key, number and total.",
     path: NF,
     call: "ListarNF",
@@ -475,7 +477,19 @@ export const salesTools: OmieTool[] = [
         cDetalhesPedido: flag("Include details of the originating order"),
       },
     },
-    param: withPaging("snake"),
+    // Production, NF 3993: cApenasResumo=S with cDetalhesPedido=S returned
+    // pedido {} and titulos [] although nIdPedido was set; with the summary
+    // off both came back complete. So for that combination the summary is
+    // turned off on the wire and applied here instead.
+    param: (args) => {
+      const param = withPaging("snake")(args) as Record<string, unknown>;
+      if (args.cApenasResumo === "S" && args.cDetalhesPedido === "S") param.cApenasResumo = "N";
+      return param;
+    },
+    transform: (result, args) => {
+      if (!(args.cApenasResumo === "S" && args.cDetalhesPedido === "S") || !Array.isArray(result?.nfCadastro)) return result;
+      return { ...result, nfCadastro: result.nfCadastro.map(({ det, ...nf }: Record<string, unknown>) => nf) };
+    },
   },
   {
     name: "create_invoice",

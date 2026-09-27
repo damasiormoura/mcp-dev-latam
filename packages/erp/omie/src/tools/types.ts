@@ -48,6 +48,12 @@ export type OmieTool = {
    * an Omie error.
    */
   run?: (args: Record<string, unknown>, ctx: RunContext) => Promise<unknown>;
+  /**
+   * Reshapes Omie's response before the agent sees it — to drop what must not
+   * reach it, or to undo a workaround the param builder had to apply. The
+   * audit log still records the response as Omie sent it.
+   */
+  transform?: (result: any, args: Record<string, unknown>) => unknown;
 };
 
 export type RunContext = {

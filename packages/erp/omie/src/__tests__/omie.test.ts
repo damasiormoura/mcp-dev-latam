@@ -178,6 +178,27 @@ describe("OmieApiError", () => {
   });
 });
 
+describe("decodeEntities", () => {
+  it("decodes named, decimal and hex entities, once", async () => {
+    const { decodeEntities } = await import("../omie.js");
+
+    expect(decodeEntities('1/2&quot; &amp; 3&#47;4&#x22; a&ccedil;&atilde;o')).toBe('1/2" & 3/4" ação');
+    // Escaped entity text stays entity text — no second pass.
+    expect(decodeEntities("&amp;quot;")).toBe("&quot;");
+    // Unknown or malformed ones are left alone.
+    expect(decodeEntities("R&D &bogus; & ;")).toBe("R&D &bogus; & ;");
+  });
+
+  it("walks objects and arrays, leaving non-strings untouched", async () => {
+    const { decodeEntities } = await import("../omie.js");
+
+    expect(decodeEntities({ a: ["x&gt;y", 3, null, true], b: { c: "&lt;ok&gt;" } })).toEqual({
+      a: ["x>y", 3, null, true],
+      b: { c: "<ok>" },
+    });
+  });
+});
+
 describe("omieRequest — credentials", () => {
   it("fails fast, without a network call, when credentials are missing", async () => {
     const prevKey = process.env.OMIE_APP_KEY;

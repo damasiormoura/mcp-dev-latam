@@ -107,7 +107,7 @@ client injects server instructions.
 | `invoice_sales_order` | `FaturarPedidoVenda` | Bill a sales order in Omie ERP: issues the NF-e to SEFAZ and creates the AR title(s) and, unless disabled per item, the stock exit — a fiscal act |
 | `cancel_order` | `CancelarPedidoVenda` | Cancel a sales order in Omie ERP — for an order that was billed or must stay on record as cancelled; one never billed can simply be removed with delete_order |
 | `list_order_stages` | `ListarEtapasPedido` | List the sales order stages configured for this Omie account |
-| `list_invoices` | `ListarNF` | List or search invoices (NF) from Omie ERP; returns nIdNF, the ID create_invoice and get_invoice_pdf take. cDetalhesPedido="S" fills `pedido` and `titulos` for an NF issued from a sales order (NFs with no originating order leave them empty). cApenasResumo="S" drops the item lines (det) but keeps the full `total` block |
+| `list_invoices` | `ListarNF` | List or search invoices (NF) from Omie ERP; returns nIdNF, the ID create_invoice and get_invoice_pdf take. cDetalhesPedido="S" fills `pedido` and `titulos` for an NF issued from a sales order (NFs with no originating order leave them empty). cApenasResumo="S" drops the item lines (det) but keeps the full `total` block; Omie itself would also empty `pedido` and `titulos`, so when both flags are set this tool asks for the full NF and removes `det` itself |
 | `create_invoice` | `ConsultarNF` | Consult a specific NF in Omie ERP |
 | `get_invoice_pdf` | `ObterNfe` | Get the download links for an issued NF-e in Omie ERP — the DANFE PDF and the XML |
 
