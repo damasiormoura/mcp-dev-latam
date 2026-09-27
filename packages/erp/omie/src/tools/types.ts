@@ -152,6 +152,16 @@ export const ID = {
   serviceOrder: "Omie service order ID — nCodOS from list_service_orders / create_service_order",
 } as const;
 
+/**
+ * What a payment-term field should say. The code "999" was documented here as
+ * the single-installment term; in the live account it is "Informar o número
+ * de parcelas" (nParcelas 999), so an order sent with it carries the wrong
+ * term. List the real codes rather than guess — they are per account.
+ */
+export const PAYMENT_TERM =
+  "Payment term code (list_payment_terms) — e.g. \"000\" = à vista, \"001\" = 1 parcela. Not \"999\": " +
+  "that one means \"informar o número de parcelas\" and needs the installment count sent too";
+
 /** A DD/MM/YYYY date property. */
 export function date(description: string) {
   return { type: "string", description: `${description} (DD/MM/YYYY)` };

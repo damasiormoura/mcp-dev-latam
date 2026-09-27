@@ -1,4 +1,4 @@
-import { OmieTool, listOnly, pagingSchema, withPaging, date, flag, changeTrackingFilters, orderingFilters, notes, ID } from "./types.js";
+import { OmieTool, listOnly, pagingSchema, withPaging, date, flag, changeTrackingFilters, orderingFilters, notes, ID, PAYMENT_TERM } from "./types.js";
 
 const ORDER = "/produtos/pedido/";
 const FAT = "/produtos/pedidovendafat/";
@@ -39,8 +39,8 @@ export const salesTools: OmieTool[] = [
             codigo_pedido_integracao: { type: "string", description: "Integration order code (unique, max 60 chars)" },
             data_previsao: date("Expected billing date"),
             etapa: { type: "string", description: "Order stage: 00=Orçamento, 10=Pedido, 20=Separar, 50=Faturar, 60=Faturado" },
-            codigo_parcela: { type: "string", description: "Payment term code, e.g. \"999\" for a single installment (list_payment_terms)" },
-            qtde_parcelas: { type: "number", description: "Number of installments; required when codigo_parcela is a multi-installment term" },
+            codigo_parcela: { type: "string", description: PAYMENT_TERM },
+            qtde_parcelas: { type: "number", description: "Number of installments — required with codigo_parcela \"999\"" },
             codigo_cenario_impostos: { type: "number", description: "Tax scenario ID; the default scenario is used when omitted" },
             origem_pedido: { type: "string", description: "Order origin, 3 chars (default API)" },
             tipo_desconto_pedido: { type: "string", enum: ["V", "P"], description: "Order-level discount type: V=value, P=percent" },
@@ -442,7 +442,9 @@ export const salesTools: OmieTool[] = [
     name: "list_invoices",
     description:
       "List or search invoices (NF) from Omie ERP (ListarNF); returns nIdNF, the ID create_invoice and " +
-      "get_invoice_pdf take. Set cApenasResumo=\"S\" when scanning a period — the " +
+      "get_invoice_pdf take. cDetalhesPedido=\"S\" fills `pedido` and `titulos` for an NF issued from a " +
+      "sales order (NFs with no originating order leave them empty). cApenasResumo=\"S\" drops the item " +
+      "lines (det) but keeps the full `total` block. Set cApenasResumo=\"S\" when scanning a period — the " +
       "full NF record is large, and the summary carries the key, number and total.",
     path: NF,
     call: "ListarNF",

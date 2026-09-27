@@ -1,4 +1,4 @@
-import { OmieTool, pagingSchema, withPaging, flag, notes, ID } from "./types.js";
+import { OmieTool, pagingSchema, withPaging, flag, notes, ID, changeTrackingFilters, orderingFilters } from "./types.js";
 
 const PATH = "/geral/produtos/";
 
@@ -23,20 +23,34 @@ export const productTools: OmieTool[] = [
   {
     name: "list_products",
     description:
-      "List products in Omie ERP (ListarProdutos). Returns codigo_produto, the ID other tools take as " +
-      "codigo_produto, id_prod, nCodProd or idProd. To look up one product by SKU or integration code use " +
-      "get_product instead of paging.",
+      "List or search products in Omie ERP (ListarProdutos). Returns codigo_produto, the ID other tools take " +
+      "as codigo_produto, id_prod, nCodProd or idProd. To find a product by name use filtrar_apenas_descricao " +
+      "with % wildcards (e.g. \"%PRESSOSTATO%\"); to look up one by SKU or integration code use get_product. " +
+      "Records are large (full tax data per product) — keep registros_por_pagina small when scanning.",
     path: PATH,
     call: "ListarProdutos",
     inputSchema: {
       type: "object",
       properties: {
         ...pagingSchema("snake"),
+        ...changeTrackingFilters(),
+        ...orderingFilters("ordenar_por", "ordem_decrescente"),
+        filtrar_apenas_descricao: {
+          type: "string",
+          description: "Filter by description: \"TEXT\" exact, \"TEXT%\" starts with, \"%TEXT\" ends with, \"%TEXT%\" contains",
+        },
+        filtrar_apenas_familia: { type: "string", description: "Filter by product family ID" },
+        inativo: flag("Filter by inactive status"),
         apenas_importado_api: flag("Only API-imported products"),
-        filtrar_apenas_omiepdv: flag("Only products flagged for Omie PDV"),
+        filtrar_apenas_omiepdv: flag(
+          "Only products flagged for Omie PDV. Defaults to \"N\" here — Omie's own default is \"S\", which " +
+            "returns nothing for an account that does not sell through the PDV"
+        ),
       },
     },
-    param: withPaging("snake"),
+    // Seen in production 2026-09-27: with the flag absent ListarProdutos
+    // returned 0 of 213 products — Omie documents it as mandatory, default "S".
+    param: (args) => ({ ...withPaging("snake")(args), filtrar_apenas_omiepdv: args.filtrar_apenas_omiepdv ?? "N" }),
   },
   {
     name: "create_product",

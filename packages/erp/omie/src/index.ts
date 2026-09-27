@@ -49,7 +49,7 @@ import { TOOLS, findTool, INSTRUCTIONS, annotationsFor } from "./tools/index.js"
 import { ToolRefusal } from "./tools/types.js";
 import { type Caller, attributionText, buildEntry, closeAuditLog, currentCaller, record, reopenAuditLog, stamp, withCaller } from "./audit.js";
 
-const VERSION = "0.8.0";
+const VERSION = "0.8.1";
 
 const DEMO_MODE = process.argv.includes("--demo") || process.env.MCP_DEMO === "true";
 

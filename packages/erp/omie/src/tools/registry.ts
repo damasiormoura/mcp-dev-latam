@@ -96,7 +96,9 @@ export const registryTools: OmieTool[] = [
     description:
       "List the payment terms (condições de pagamento / parcelas) configured in Omie ERP " +
       "(ListarParcelas). Resolves the codigo_parcela that create_order, create_service_order and " +
-      "create_purchase_order require — \"999\" is the conventional single-installment code.",
+      "create_purchase_order require. Codes are per account — read them here rather than assuming: typically " +
+      "\"000\" = à vista and \"001\" = 1 parcela, while \"999\" is \"informar o número de parcelas\" (the " +
+      "count must then be sent too), not a single installment.",
     path: "/geral/parcelas/",
     call: "ListarParcelas",
     inputSchema: {

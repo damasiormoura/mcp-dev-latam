@@ -84,7 +84,7 @@ client injects server instructions.
 
 | Tool | Omie method | Purpose |
 |---|---|---|
-| `list_products` | `ListarProdutos` | List products in Omie ERP |
+| `list_products` | `ListarProdutos` | List or search products in Omie ERP |
 | `create_product` | `IncluirProduto` | Create a product in Omie ERP; returns codigo_produto |
 | `get_product` | `ConsultarProduto` | Consult a single product in Omie ERP by Omie ID, integration code or SKU |
 | `update_product` | `AlterarProduto` | Update an existing product in Omie ERP |
@@ -107,7 +107,7 @@ client injects server instructions.
 | `invoice_sales_order` | `FaturarPedidoVenda` | Bill a sales order in Omie ERP: issues the NF-e to SEFAZ and creates the AR title(s) and, unless disabled per item, the stock exit — a fiscal act |
 | `cancel_order` | `CancelarPedidoVenda` | Cancel a sales order in Omie ERP — for an order that was billed or must stay on record as cancelled; one never billed can simply be removed with delete_order |
 | `list_order_stages` | `ListarEtapasPedido` | List the sales order stages configured for this Omie account |
-| `list_invoices` | `ListarNF` | List or search invoices (NF) from Omie ERP; returns nIdNF, the ID create_invoice and get_invoice_pdf take |
+| `list_invoices` | `ListarNF` | List or search invoices (NF) from Omie ERP; returns nIdNF, the ID create_invoice and get_invoice_pdf take. cDetalhesPedido="S" fills `pedido` and `titulos` for an NF issued from a sales order (NFs with no originating order leave them empty). cApenasResumo="S" drops the item lines (det) but keeps the full `total` block |
 | `create_invoice` | `ConsultarNF` | Consult a specific NF in Omie ERP |
 | `get_invoice_pdf` | `ObterNfe` | Get the download links for an issued NF-e in Omie ERP — the DANFE PDF and the XML |
 
@@ -157,7 +157,7 @@ client injects server instructions.
 | `list_financial_movements` | `ListarMovimentos` | List unified financial movements (AP + AR + CC) in Omie ERP |
 | `get_bank_statement` | `ListarExtrato` | Retrieve a bank account statement (extrato) for a period from Omie ERP — every credit and debit with the running balance, as reconciled in Omie |
 | `get_finance_summary` | `ObterResumoFinancas` | Get the consolidated finance position for a day in Omie ERP — balances and totals rather than a title-by-title listing |
-| `list_open_titles` | `ObterListaEmAberto` | List the titles still open in Omie ERP — the collections and payables worklist. cTipo (required) selects P (payables) or R (receivables) |
+| `list_open_titles` | `ObterListaEmAberto` | List the open titles falling due on ONE day in Omie ERP — the dashboard's "to collect / to pay today" list, NOT every open or overdue title: a title that fell due on an earlier day does not appear (on a weekend dDia it shows the last business day) |
 | `cancel_account_receivable` | `CancelarContaReceber` | Cancel an accounts receivable title in Omie ERP — status_titulo becomes CANCELADO; the invoice (NF-e / NFS-e) it came from is NOT touched |
 
 ### Billing — PIX & boleto (9)
