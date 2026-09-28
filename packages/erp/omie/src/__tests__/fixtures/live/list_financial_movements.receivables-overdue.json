@@ -1,0 +1,55 @@
+{
+  "_comment": "Production 2026-09-27: cNatureza=R + cStatus=ATRASADO through the tool (which adds cTpLancamento=CR) — the 2 overdue titles and nothing else, page 1 at one record per page. Anonymized.",
+  "tool": "list_financial_movements",
+  "args": {
+    "nRegPorPagina": 1,
+    "cNatureza": "R",
+    "cStatus": "ATRASADO"
+  },
+  "response": {
+    "nPagina": 1,
+    "nTotPaginas": 2,
+    "nRegistros": 1,
+    "nTotRegistros": 2,
+    "movimentos": [
+      {
+        "detalhes": {
+          "cCPFCNPJCliente": "03.003.003/0001-03",
+          "cCodCateg": "1.01.02",
+          "cCodigoBarras": "00000000000000000000000000000000000000000000000",
+          "cGrupo": "CONTA_A_RECEBER",
+          "cNatureza": "R",
+          "cNumBoleto": "600000003",
+          "cNumDocFiscal": "1059",
+          "cNumOS": "17",
+          "cNumParcela": "001/001",
+          "cNumTitulo": "RPS 3",
+          "cOperacao": "01",
+          "cOrigem": "VENR",
+          "cStatus": "ATRASADO",
+          "cTipo": "BOL",
+          "dDtEmissao": "03/09/2026",
+          "dDtPrevisao": "25/09/2026",
+          "dDtRegistro": "03/09/2026",
+          "dDtVenc": "25/09/2026",
+          "nCodCC": 5952605177,
+          "nCodCliente": 5958840992,
+          "nCodNF": 5962782759,
+          "nCodOS": 5961464783,
+          "nCodTitRepet": 5962783931,
+          "nCodTitulo": 5962783931,
+          "nValorTitulo": 652
+        },
+        "resumo": {
+          "cLiquidado": "N",
+          "nDesconto": 0,
+          "nJuros": 0,
+          "nMulta": 0,
+          "nValAberto": 652,
+          "nValLiquido": 0,
+          "nValPago": 0
+        }
+      }
+    ]
+  }
+}

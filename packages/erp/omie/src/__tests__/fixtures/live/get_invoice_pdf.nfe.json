@@ -1,0 +1,17 @@
+{
+  "_comment": "Production 2026-09-27: ObterNfe returns the authorized XML inline in cXmlNfe (about 8 KB, with the signature and certificate), plus two links. XML and links replaced by synthetic values.",
+  "tool": "get_invoice_pdf",
+  "args": {
+    "nIdNfe": 5962533703
+  },
+  "response": {
+    "cNumNfe": "00003995",
+    "nChaveNfe": "35260900000000000001550010000000001000000001",
+    "dDataEmisNfe": "03/09/2026",
+    "cXmlNfe": "<?xml version=\"1.0\" encoding=\"UTF-8\"?><nfeProc versao=\"4.00\"><!-- XML autorizado substituído por um sintético --></nfeProc>",
+    "cPdf": "https://cdn.example.invalid/documento-2.pdf",
+    "cLinkPortal": "https://cdn.example.invalid/documento-3.pdf",
+    "cCodStatus": "0",
+    "cDesStatus": "Documentos gerados com sucesso!"
+  }
+}

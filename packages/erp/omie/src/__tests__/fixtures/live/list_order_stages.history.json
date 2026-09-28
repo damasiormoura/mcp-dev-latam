@@ -1,0 +1,87 @@
+{
+  "_comment": "Production 2026-09-27: ListarEtapasPedido for one order returns one row per stage it entered (60 at 10:55, 70 at 18:46) — a stage history, not the account's stage configuration. Unfiltered it returned 109 rows for 27 orders. Anonymized.",
+  "tool": "list_order_stages",
+  "args": {
+    "nCodPed": 5962530736
+  },
+  "response": {
+    "nPagina": 1,
+    "nTotPaginas": 1,
+    "nRegistros": 2,
+    "nTotRegistros": 2,
+    "etapasPedido": [
+      {
+        "cCodIntPed": "",
+        "cEtapa": "60",
+        "cHrEtapa": "10:55:22",
+        "cNumero": "10",
+        "cUsEtapa": "P000000002",
+        "cancelamento": {
+          "cCancelado": "N"
+        },
+        "dDtEtapa": "03/09/2026",
+        "devolucao": {
+          "cDevolvido": "N"
+        },
+        "faturamento": {
+          "cAmbiente": "P",
+          "cAutorizado": "S",
+          "cChaveNFE": "35260900000000000001550010000000001000000001",
+          "cDANFE": "S",
+          "cDenegado": "N",
+          "cFaturado": "S",
+          "cHrFat": "10:55:21",
+          "cNumNFE": "00003995",
+          "cSerieNFE": "001",
+          "dDtFat": "03/09/2026"
+        },
+        "info": {
+          "cImpAPI": "N",
+          "dAlt": "03/09/2026",
+          "dInc": "03/09/2026",
+          "hAlt": "18:46:37",
+          "hInc": "10:45:09",
+          "uAlt": "P000000001",
+          "uInc": "P000000002"
+        },
+        "nCodPed": 5962530736
+      },
+      {
+        "cCodIntPed": "",
+        "cEtapa": "70",
+        "cHrEtapa": "18:46:37",
+        "cNumero": "10",
+        "cUsEtapa": "P000000001",
+        "cancelamento": {
+          "cCancelado": "N"
+        },
+        "dDtEtapa": "03/09/2026",
+        "devolucao": {
+          "cDevolvido": "N"
+        },
+        "faturamento": {
+          "cAmbiente": "P",
+          "cAutorizado": "S",
+          "cChaveNFE": "35260900000000000001550010000000001000000001",
+          "cDANFE": "S",
+          "cDenegado": "N",
+          "cFaturado": "S",
+          "cHrFat": "10:55:21",
+          "cNumNFE": "00003995",
+          "cSerieNFE": "001",
+          "dDtFat": "03/09/2026"
+        },
+        "info": {
+          "cImpAPI": "N",
+          "dAlt": "03/09/2026",
+          "dInc": "03/09/2026",
+          "hAlt": "18:46:37",
+          "hInc": "10:45:09",
+          "uAlt": "P000000001",
+          "uInc": "P000000002"
+        },
+        "nCodPed": 5962530736
+      }
+    ]
+  }
+}

@@ -183,7 +183,12 @@ export const salesTools: OmieTool[] = [
         ...pagingSchema("snake"),
         ...changeTrackingFilters(),
         ...orderingFilters("ordenar_por"),
-        etapa: { type: "string", description: "Order stage filter (10=Pedido, 20=Separar, 50=Faturar, 60=Faturado)" },
+        etapa: {
+          type: "string",
+          description:
+            "Order stage filter (10=Pedido, 20=Separar, 50=Faturar, 60=Faturado; 00 and 70 also occur in production). " +
+            "Omie documents the codes as fixed columns whose names are configured per account",
+        },
         status_pedido: { type: "string", description: "Order status: FATURADO, CANCELADO, AUTORIZADO, DENEGADO, DEVOLVIDO" },
         filtrar_por_cliente: { type: "number", description: `Filter by ${ID.customer}` },
         filtrar_por_vendedor: { type: "number", description: "Filter by salesperson ID" },
@@ -196,7 +201,10 @@ export const salesTools: OmieTool[] = [
         data_faturamento_ate: date("Billing date to"),
         data_cancelamento_de: date("Cancellation date from"),
         data_cancelamento_ate: date("Cancellation date to"),
-        apenas_resumo: flag("Return only the order summary — much smaller payload per record"),
+        apenas_resumo: flag(
+          "Return only the order summary — much smaller payload per record, but without det, lista_parcelas and " +
+            "total_pedido: use get_order_status or get_sales_order for the value"
+        ),
       },
     },
     param: withPaging("snake"),
@@ -296,7 +304,7 @@ export const salesTools: OmieTool[] = [
       type: "object",
       properties: {
         ...orderKey,
-        etapa: { type: "string", description: "Target stage: 10=Pedido, 20=Separar, 50=Faturar, 60=Faturado (list_order_stages for the configured set)" },
+        etapa: { type: "string", description: "Target stage: 10=Pedido, 20=Separar, 50=Faturar, 60=Faturado (Omie fixes the codes; the column names are configured per account)" },
       },
       required: ["etapa"],
       anyOfRequired: orderKeyRequired,
@@ -306,7 +314,9 @@ export const salesTools: OmieTool[] = [
     name: "simulate_order_taxes",
     description:
       "Simulate the taxes of a sales order in Omie ERP (SimularImpostos) without creating anything. " +
-      "Use this to quote a price before committing an order.",
+      "Use this to quote a price before committing an order. Send det_simul[].codigo_cenario_impostos_item: Omie's " +
+      "docs call it optional, but in production the call without it was refused (\"O Cenário de impostos precisa " +
+      "ser preenchido\") — take the value from an existing order's cabecalho.codigo_cenario_impostos.",
     path: ORDER,
     call: "SimularImpostos",
     inputSchema: {
@@ -329,7 +339,10 @@ export const salesTools: OmieTool[] = [
           items: {
             type: "object",
             properties: {
-              codigo_cenario_impostos_item: { type: "number", description: "Tax scenario ID for this item" },
+              codigo_cenario_impostos_item: {
+                type: "number",
+                description: "Tax scenario ID for this item — needed in practice (see the tool description)",
+              },
               produto_simul: {
                 type: "object",
                 properties: {
@@ -420,8 +433,11 @@ export const salesTools: OmieTool[] = [
   {
     name: "list_order_stages",
     description:
-      "List the sales order stages configured for this Omie account (ListarEtapasPedido). Resolves the " +
-      "codes that create_order.cabecalho.etapa and change_order_stage expect.",
+      "List the stage history of sales orders in Omie ERP (ListarEtapasPedido): one row per stage an order " +
+      "entered — nCodPed, cNumero, cEtapa, dDtEtapa / cHrEtapa / cUsEtapa (who moved it, when) — with the order's " +
+      "billing, cancellation and return flags, so an order billed (60) and then moved to 70 appears twice. It is NOT " +
+      "the list of stages configured for the account: Omie publishes those on ListarEtapasFaturamento " +
+      "(/produtos/etapafat/), which this server does not expose. dDtInicial / dDtFinal filter on the stage-change date.",
     path: "/produtos/pedidoetapas/",
     call: "ListarEtapasPedido",
     inputSchema: {
@@ -432,8 +448,8 @@ export const salesTools: OmieTool[] = [
         nCodPed: { type: "number", description: "Filter by Omie order ID" },
         cCodIntPed: { type: "string", description: "Filter by order integration code" },
         cEtapa: { type: "string", description: "Filter by stage code" },
-        dDtInicial: date("Date range from"),
-        dDtFinal: date("Date range to"),
+        dDtInicial: date("Stage-change date from"),
+        dDtFinal: date("Stage-change date to"),
       },
     },
     param: withPaging("n"),
@@ -442,12 +458,13 @@ export const salesTools: OmieTool[] = [
     name: "list_invoices",
     description:
       "List or search invoices (NF) from Omie ERP (ListarNF); returns nIdNF, the ID create_invoice and " +
-      "get_invoice_pdf take. cDetalhesPedido=\"S\" fills `pedido` and `titulos` for an NF issued from a " +
-      "sales order (NFs with no originating order leave them empty). cApenasResumo=\"S\" drops the item " +
-      "lines (det) but keeps the full `total` block; Omie itself would also empty `pedido` and `titulos`, so " +
-      "when both flags are set this tool asks for the full NF and removes `det` itself. Set " +
-      "cApenasResumo=\"S\" when scanning a period — the " +
-      "full NF record is large, and the summary carries the key, number and total.",
+      "get_invoice_pdf take. The full record carries `titulos` (the AR/AP titles the NF generated); " +
+      "cDetalhesPedido=\"S\" also fills `pedido` for an NF issued from a sales order (NFs with no originating " +
+      "order leave it empty). cApenasResumo=\"S\" drops the item lines (det) but keeps the full `total` block; " +
+      "Omie itself would also empty `pedido` and `titulos`, so when both flags are set this tool asks for the " +
+      "full NF and removes `det` itself. Set cApenasResumo=\"S\" when scanning a period — the full NF record " +
+      "is large, and the summary carries the key, number and total. cSerie is matched as written: \"1\" and " +
+      "\"001\" are different series to Omie.",
     path: NF,
     call: "ListarNF",
     inputSchema: {
@@ -484,6 +501,13 @@ export const salesTools: OmieTool[] = [
     param: (args) => {
       const param = withPaging("snake")(args) as Record<string, unknown>;
       if (args.cApenasResumo === "S" && args.cDetalhesPedido === "S") param.cApenasResumo = "N";
+      // Production, 2026-09-27: filtrar_por_data_de/ate alone returned all 453
+      // NFs — ListarNF applies the change window only when one of the two flags
+      // is set (either gave 9). Alteração is the one that also counts new NFs.
+      const window = args.filtrar_por_data_de !== undefined || args.filtrar_por_data_ate !== undefined;
+      if (window && args.filtrar_apenas_inclusao === undefined && args.filtrar_apenas_alteracao === undefined) {
+        param.filtrar_apenas_alteracao = "S";
+      }
       return param;
     },
     transform: (result, args) => {
@@ -495,8 +519,9 @@ export const salesTools: OmieTool[] = [
     name: "create_invoice",
     description:
       "Consult a specific NF in Omie ERP (ConsultarNF). Despite the name this reads an invoice, it does " +
-      "not issue one — use invoice_sales_order to bill an order. Identify the NF by nCodNF, or by " +
-      "cChaveNFe, or by nNF + serie.",
+      "not issue one — use invoice_sales_order to bill an order. Identify the NF by nCodNF, cChaveNFe, " +
+      "nIdPedido, or nNF + serie; cnpj_cpf and tpNF only narrow an nNF + serie lookup (an inbound NF number " +
+      "repeats across suppliers) — on their own Omie refuses the call.",
     path: NF,
     call: "ConsultarNF",
     inputSchema: {
@@ -516,8 +541,9 @@ export const salesTools: OmieTool[] = [
   {
     name: "get_invoice_pdf",
     description:
-      "Get the download links for an issued NF-e in Omie ERP (ObterNfe) — the DANFE PDF and the XML. " +
-      "Takes the NF-e internal ID, which list_invoices returns as nIdNF.",
+      "Get an issued NF-e's documents in Omie ERP (ObterNfe): cPdf (DANFE link), cLinkPortal, and cXmlNfe — " +
+      "the whole authorized XML inline, several KB, not a link. Takes the NF-e internal ID, which list_invoices " +
+      "returns as nIdNF.",
     path: "/produtos/dfedocs/",
     call: "ObterNfe",
     inputSchema: {

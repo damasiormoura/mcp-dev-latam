@@ -1,0 +1,132 @@
+{
+  "_comment": "Production 2026-09-27, NF 3995 (from sales order 5962530736). What ListarNF returns for cApenasResumo=N + cDetalhesPedido=S — the call this tool makes when both flags are S: det, pedido and titulos all filled. Rebuilt from the two live calls (no flags: det + titulos; both flags through the tool: pedido); tax blocks trimmed. Anonymized.",
+  "tool": "list_invoices",
+  "args": {
+    "nNFInicial": 3995,
+    "nNFFinal": 3995,
+    "cApenasResumo": "S",
+    "cDetalhesPedido": "S"
+  },
+  "response": {
+    "pagina": 1,
+    "total_de_paginas": 1,
+    "registros": 1,
+    "total_de_registros": 1,
+    "nfCadastro": [
+      {
+        "compl": {
+          "cChaveNFe": "35260900000000000001550010000000001000000001",
+          "cCodCateg": "1.01.03",
+          "cModFrete": "9",
+          "nIdNF": 5962533703,
+          "nIdPedido": 5962530736,
+          "nIdReceb": 0,
+          "nIdTransp": 0
+        },
+        "det": [
+          {
+            "nfProdInt": {
+              "cCodItemInt": "",
+              "cCodProdInt": "",
+              "nCodItem": 5962531395,
+              "nCodProd": 5955136546
+            },
+            "prod": {
+              "CFOP": "5.102",
+              "NCM": "6903.20.30",
+              "cProd": "2000000000286",
+              "qCom": 10,
+              "uCom": "UN",
+              "vProd": 3500,
+              "vTotItem": 3500,
+              "vUnCom": 350,
+              "xProd": "TUBO IGNITOR - ELETRODO DE IONIZACAO/IGNICAO DUPLO"
+            },
+            "rastreabilidade": {}
+          }
+        ],
+        "ide": {
+          "cDeneg": "N",
+          "dCan": "",
+          "dEmi": "03/09/2026",
+          "dReg": "03/09/2026",
+          "dSaiEnt": "03/09/2026",
+          "finNFe": "1",
+          "mod": "55",
+          "nNF": "00003995",
+          "serie": "001",
+          "tpAmb": "1",
+          "tpNF": "1"
+        },
+        "info": {
+          "cImpAPI": "N",
+          "dAlt": "03/09/2026",
+          "dInc": "03/09/2026",
+          "hAlt": "10:55:21",
+          "hInc": "10:55:21",
+          "uAlt": "P000000001",
+          "uInc": "P000000001"
+        },
+        "nfDestInt": {
+          "cCodCliInt": "",
+          "cRazao": "EMPRESA EXEMPLO A LTDA",
+          "cnpj_cpf": "01.001.001/0001-01",
+          "nCodCli": 5958901686
+        },
+        "nfEmitInt": {
+          "cCodEmpInt": "",
+          "nCodEmp": 5950680145
+        },
+        "pedido": {
+          "cCancelado": "N",
+          "cDevParcial": "N",
+          "cDevolvido": "N",
+          "cNumPedido": "10",
+          "dAltPedido": "03/09/2026",
+          "dIncPedido": "03/09/2026",
+          "hAltPedido": "18:46:37",
+          "hIncPedido": "10:45:09",
+          "opPedido": "11",
+          "uAltPedido": "P000000002",
+          "uIncPedido": "P000000001"
+        },
+        "titulos": [
+          {
+            "cCodCateg": "1.01.03",
+            "cCodIntTitulo": "",
+            "cDoc": "NFE",
+            "cNumTitulo": "",
+            "dDtEmissao": "03/09/2026",
+            "dDtPrevisao": "09/10/2026",
+            "dDtVenc": "09/10/2026",
+            "dReg": "03/09/2026",
+            "nCodTitRepet": 5962533719,
+            "nCodTitulo": 5962533719,
+            "nParcela": 1,
+            "nTotParc": 1,
+            "nValorTitulo": 3500
+          }
+        ],
+        "total": {
+          "CBSTot": {
+            "vCBCbs": 0,
+            "vCbs": 0,
+            "vCbsCred": 0,
+            "vCbsDif": 0
+          },
+          "ICMSTot": {
+            "vBC": 0,
+            "vICMS": 0,
+            "vNF": 3500,
+            "vProd": 3500
+          },
+          "ISSQNtot": {
+            "vBC": 0,
+            "vISS": 0,
+            "vServ": 0
+          }
+        }
+      }
+    ]
+  }
+}

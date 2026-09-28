@@ -321,6 +321,11 @@ método **retorna só os últimos 30 dias quando nenhum filtro de data é
 enviado**; isso precisa estar na descrição, ou o agente conclui que a empresa
 não tem histórico.
 
+> **Refutado em produção (2026-09-27, 0.9.1):** sem filtro de data vieram 127
+> movimentos, o primeiro emitido 54 dias antes, e a doc da Omie não fala de
+> janela padrão. A descrição agora manda passar o período. Ver
+> [`READ-TOOLS-LIVE.md`](./READ-TOOLS-LIVE.md).
+
 ### 2.7 `update_sales_order` — `src/index.ts:515-529`
 
 `cabecalho`, `observacoes`, `informacoes_adicionais` e `frete` estão corretos

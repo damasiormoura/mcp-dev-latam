@@ -88,8 +88,9 @@ export const stockTools: OmieTool[] = [
     name: "get_stock_position",
     description:
       "List the stock position of every product on a date in Omie ERP (ListarPosEstoque) — nCodProd, " +
-      "cCodigo and the balance per product. Items with zero stock are left out unless cExibeTodos=\"S\". " +
-      "For a single product get_product_stock is cheaper.",
+      "cCodigo and the balance per product. Products that never moved are left out unless cExibeTodos=\"S\" " +
+      "(a product with movements but a zero balance is listed either way); with cExibeTodos=\"S\" Omie ignores " +
+      "nRegPorPagina and pages 50 at a time. For a single product get_product_stock is cheaper.",
     path: QUERY,
     call: "ListarPosEstoque",
     inputSchema: {
@@ -97,7 +98,7 @@ export const stockTools: OmieTool[] = [
       properties: {
         ...pagingSchema("n"),
         dDataPosicao: date("Position reference date"),
-        cExibeTodos: flag("Include items with zero stock (default N)"),
+        cExibeTodos: flag("Include products with no stock movement (default N)"),
         codigo_local_estoque: { type: "number", description: "Filter by warehouse location ID (list_stock_locations)" },
         lista_local_estoque: { type: "string", description: "Comma-separated list of warehouse location IDs" },
         cTipoItem: { type: "string", description: "Item type code, 2 chars (from the product's fiscal tab)" },
@@ -127,7 +128,9 @@ export const stockTools: OmieTool[] = [
     name: "list_stock_movements",
     description:
       "List stock movements over a period in Omie ERP (ListarMovimentoEstoque) — the ledger behind the " +
-      "balances that get_stock_position reports.",
+      "balances that get_stock_position reports. Omie silently cuts the period to about 60 days from dDtInicial " +
+      "(production: 15/07–27/09 returned only what moved up to 13/09, 01/01–27/09 returned nothing), so query " +
+      "windows of 60 days or less. Send codigo_local_estoque or lista_local_estoque, not both — Omie refuses the pair.",
     path: QUERY,
     call: "ListarMovimentoEstoque",
     inputSchema: {

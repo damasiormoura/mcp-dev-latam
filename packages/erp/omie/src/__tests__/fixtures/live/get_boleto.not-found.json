@@ -1,0 +1,24 @@
+{
+  "_comment": "Production 2026-09-27: ObterBoleto for an unknown integration code answers HTTP 200 with cCodStatus 103 — the error is in-band, not an HTTP fault.",
+  "tool": "get_boleto",
+  "args": {
+    "cCodIntTitulo": "NAO-EXISTE-TESTE"
+  },
+  "response": {
+    "cLinkBoleto": "",
+    "cCodStatus": "103",
+    "cDesStatus": "Lançamento não cadastrado para o Código de Integração [NAO-EXISTE-TESTE] ou Liquidado !",
+    "dDtEmBol": "",
+    "cNumBoleto": "",
+    "cCodBarras": "",
+    "nPerJuros": 0,
+    "nPerMulta": 0,
+    "cNumBancario": "",
+    "dDescontoCond1": "",
+    "vDescontoCond1": 0,
+    "dDescontoCond2": "",
+    "vDescontoCond2": 0,
+    "dDescontoCond3": "",
+    "vDescontoCond3": 0
+  }
+}

@@ -187,13 +187,20 @@ export function flag(description: string) {
  * *inclusion/alteration* time, not the business date of the record — an
  * endpoint that also filters by issue or due date spells that separately
  * (filtrar_por_emissao_*, dDtVenc*, and so on).
+ *
+ * Production, 2026-09-27, on five endpoints (bank accounts, customers,
+ * products, orders, invoices): filtrar_apenas_alteracao="S" returned exactly
+ * what the bare window returned — a record created in the window counts as
+ * changed — while filtrar_apenas_inclusao="S" narrowed it to the new ones.
  */
 export function changeTrackingFilters(): Record<string, unknown> {
   return {
     filtrar_por_data_de: date("Filter records created/changed from this date"),
     filtrar_por_data_ate: date("Filter records created/changed up to this date"),
-    filtrar_apenas_inclusao: flag("Only newly created records"),
-    filtrar_apenas_alteracao: flag("Only changed records"),
+    filtrar_apenas_inclusao: flag("Only records created in the window"),
+    filtrar_apenas_alteracao: flag(
+      "Records created or changed in the window — a new record counts as changed, so this is the plain window"
+    ),
   };
 }
 

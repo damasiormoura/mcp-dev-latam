@@ -300,3 +300,65 @@ describe("validateArgs — anyOfRequired", () => {
     expect(validateArgs({ type: "object", properties: { a: { type: "number" } } }, {})).toEqual([]);
   });
 });
+
+/**
+ * The remaining branches of the error formatting and the validator — each a
+ * message an agent reads after a failed read, so each is pinned.
+ */
+describe("OmieApiError — message variants", () => {
+  it("425 with only a faultcode, only a faultstring, and neither", async () => {
+    const { OmieApiError } = await import("../omie.js");
+    const codeOnly = new OmieApiError(425, JSON.stringify({ faultcode: "SOAP-ENV:Client-8" }));
+    expect(codeOnly.message).toContain("faultcode: SOAP-ENV:Client-8");
+    expect(codeOnly.message).not.toContain("faultstring:");
+    const stringOnly = new OmieApiError(425, JSON.stringify({ faultstring: "Bloqueado" }));
+    expect(stringOnly.message).toContain("faultstring: Bloqueado");
+    expect(stringOnly.message).not.toContain("faultcode:");
+    const bare = new OmieApiError(425, "blocked");
+    expect(bare.message).toMatch(/^Omie API 425: this IP \+ App Key \+ method combination was blocked/);
+    expect(bare.message).not.toContain("\nfault");
+  });
+
+  it("REDUNDANT with no seconds in it says to wait a little, and omits a missing faultcode", async () => {
+    const { OmieApiError } = await import("../omie.js");
+    const err = new OmieApiError(500, JSON.stringify({ faultstring: "Consumo redundante detectado (REDUNDANT)." }));
+    expect(err.retryAfterSeconds).toBe(0);
+    expect(err.message).toContain("Wait a little before sending this exact call again");
+    expect(err.message).not.toContain("faultcode:");
+  });
+
+  it("a business error with a faultcode and no faultstring", async () => {
+    const { OmieApiError } = await import("../omie.js");
+    const err = new OmieApiError(500, JSON.stringify({ faultcode: "SOAP-ENV:Client-5113" }));
+    expect(err.message).toBe("Omie API error (HTTP 500)\nfaultcode: SOAP-ENV:Client-5113");
+    expect(err.retryAfterSeconds).toBeUndefined();
+  });
+});
+
+describe("decodeEntities — numeric entities out of range stay as written", () => {
+  it("leaves &#0; and a code point past U+10FFFF untouched", async () => {
+    const { decodeEntities } = await import("../omie.js");
+    expect(decodeEntities("a&#0;b&#x110000;c&#x41;")).toBe("a&#0;b&#x110000;cA");
+  });
+});
+
+describe("validateArgs — the remaining guards", () => {
+  it("treats a missing schema as no constraint", async () => {
+    const { validateArgs } = await import("../omie.js");
+    expect(validateArgs(undefined, { anything: 1 })).toEqual([]);
+  });
+
+  it("rejects a non-array where an array is declared, and a non-string where a string is", async () => {
+    const { validateArgs } = await import("../omie.js");
+    const schema = { type: "object", properties: { list: { type: "array", items: { type: "string" } }, name: { type: "string" } } };
+    expect(validateArgs(schema, { list: "x", name: 5 })).toEqual(["list must be an array", "name must be a string"]);
+    expect(validateArgs(schema, { list: [1] })).toEqual(["list[0] must be a string"]);
+  });
+
+  it("enforces a declared minimum", async () => {
+    const { validateArgs } = await import("../omie.js");
+    const schema = { type: "object", properties: { n: { type: "number", minimum: 1 } } };
+    expect(validateArgs(schema, { n: 0 })).toEqual(["n must be at least 1 (got 0)"]);
+    expect(validateArgs(schema, { n: 1 })).toEqual([]);
+  });
+});

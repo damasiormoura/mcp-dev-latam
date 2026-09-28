@@ -1,0 +1,35 @@
+{
+  "_comment": "Production 2026-09-27 (a Sunday), cTipo=R with dDia defaulting to today: Omie lists the title due on the last business day (25/09), with nDiasAtraso 0 although it is overdue. cUrlLogoBanco was stripped by the tool before we saw the response; the synthetic value here is what the transform removes. Anonymized.",
+  "tool": "list_open_titles",
+  "args": {
+    "cTipo": "R"
+  },
+  "response": {
+    "ListaEmEberto": [
+      {
+        "cBolGerado": "S",
+        "cBolPodeGerar": "N",
+        "cCor": "a94442",
+        "cDescCateg": "Clientes - Serviços Prestados",
+        "cIcone": "f05a",
+        "cNomeCliente": "EMPRESA EXEMPLO C LTDA",
+        "cPixGerado": "N",
+        "cPixPodeGerar": "N",
+        "cSituacao": "Atrasado desde 25/09 Sex",
+        "cUrlLogoBanco": "https://cdn.omie.com.br/x.png?AWSAccessKeyId=AKIA&Signature=abc",
+        "dEmissao": "03/09/2026",
+        "dPrevisao": "25/09/2026",
+        "dVencimento": "25/09/2026",
+        "nDiasAtraso": 0,
+        "nIdTitulo": 5962783931,
+        "nQtdeAnexos": 0,
+        "nQtdeTarefas": 0,
+        "vDoc": 652
+      }
+    ],
+    "nRegistros": 1,
+    "nPagina": 1,
+    "nTotPaginas": 1,
+    "nTotRegistros": 1
+  }
+}

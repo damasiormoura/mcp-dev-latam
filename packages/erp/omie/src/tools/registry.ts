@@ -106,7 +106,7 @@ export const registryTools: OmieTool[] = [
       properties: {
         ...pagingSchema("snake"),
         ...orderingFilters("ordenar_por", "ordem_decrescente"),
-        apenas_importado_api: flag("Only API-created terms"),
+        apenas_importado_api: flag("Only API-created terms — ignored by Omie here: in production \"S\" returned every term"),
       },
     },
     param: withPaging("snake"),
@@ -115,7 +115,8 @@ export const registryTools: OmieTool[] = [
     name: "list_salespeople",
     description:
       "List or search salespeople registered in Omie ERP (ListarVendedores). Pass `filtrar_por_nome` " +
-      "to resolve the codigo_vendedor that create_order and create_service_order accept.",
+      "to resolve the salesperson ID — `codigo` here, taken as informacoes_adicionais.codVend by create_order " +
+      "and Cabecalho.nCodVend by create_service_order.",
     path: "/geral/vendedores/",
     call: "ListarVendedores",
     inputSchema: {

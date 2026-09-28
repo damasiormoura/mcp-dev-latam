@@ -1,0 +1,46 @@
+{
+  "_comment": "Production 2026-09-27, ObterResumoFinancas with lApenasResumo=true — the param this tool now sends for an argument-less call (with {} Omie answered \"Nenhum parâmetro foi recebido em WS_PARAMS!\"). fluxoCaixa trimmed to 2 of 10 days.",
+  "tool": "get_finance_summary",
+  "args": {},
+  "response": {
+    "dDia": "27/09/2026",
+    "contaCorrente": {
+      "cCor": "808080",
+      "cIcone": "f472",
+      "vLimiteCredito": 0,
+      "vTotal": 25739.64
+    },
+    "contaPagar": {
+      "cCor": "808080",
+      "cIcone": "f53b",
+      "nTotal": 0,
+      "vAtraso": 0,
+      "vTotal": 0
+    },
+    "contaReceber": {
+      "cCor": "808080",
+      "cIcone": "f53b",
+      "nTotal": 2,
+      "vAtraso": 4250,
+      "vTotal": 4902
+    },
+    "contaPagarCategoria": null,
+    "contaReceberCategoria": null,
+    "contaPagarAtraso": null,
+    "contaReceberAtraso": null,
+    "fluxoCaixa": [
+      {
+        "dDia": "27/09/2026",
+        "vPagar": 0,
+        "vReceber": 4902,
+        "vSaldo": 25739.64
+      },
+      {
+        "dDia": "28/09/2026",
+        "vPagar": 0,
+        "vReceber": 4300,
+        "vSaldo": 30039.64
+      }
+    ]
+  }
+}

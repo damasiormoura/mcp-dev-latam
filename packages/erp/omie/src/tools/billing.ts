@@ -41,7 +41,8 @@ export const billingTools: OmieTool[] = [
     name: "get_pix_qrcode",
     description:
       "Generate the account's STATIC PIX QR code in Omie ERP (GerarQrCodePix) — no amount, not linked to " +
-      "any title. To charge a specific amount or title use create_pix.",
+      "any title. Only an Omie.CASH account has one: for any other nIdConta Omie answers cCodStatus \"719\" " +
+      "(\"não está associada ao Omie.CASH\") with empty fields. To charge a specific amount or title use create_pix.",
     path: PIX,
     call: "GerarQrCodePix",
     inputSchema: {
@@ -117,8 +118,10 @@ export const billingTools: OmieTool[] = [
   {
     name: "get_boleto",
     description:
-      "Get the download link for a boleto already generated in Omie ERP (ObterBoleto). Call " +
-      "generate_boleto first if the title has none.",
+      "Get the download link (cLinkBoleto), barcode and number of a boleto already generated in Omie ERP " +
+      "(ObterBoleto). A read, although Omie answers \"Boleto gerado com sucesso!\"; a title it cannot find comes " +
+      "back as HTTP 200 with cCodStatus \"103\" and empty fields, so check cCodStatus = \"0\". Call generate_boleto " +
+      "first if the title has none.",
     path: BOLETO,
     call: "ObterBoleto",
     inputSchema: { type: "object", properties: titleRef, anyOfRequired: titleRefRequired },

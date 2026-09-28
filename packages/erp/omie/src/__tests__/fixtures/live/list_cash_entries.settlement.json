@@ -1,0 +1,59 @@
+{
+  "_comment": "Production 2026-09-27: ListarLancCC with cOrigem=BAXR — the ledger side of an AR settlement (nCodLancCR = the title). 7 BAXR + 7 BAXP of the 21 entries were settlements, which the old description said were not here. Anonymized.",
+  "tool": "list_cash_entries",
+  "args": {
+    "nRegPorPagina": 1,
+    "cOrigem": "BAXR"
+  },
+  "response": {
+    "nPagina": 1,
+    "nTotPaginas": 7,
+    "nRegistros": 1,
+    "nTotRegistros": 7,
+    "listaLancamentos": [
+      {
+        "cCodIntLanc": "",
+        "cabecalho": {
+          "dDtLanc": "09/09/2026",
+          "nCodCC": 5952605177,
+          "nValorLanc": 6000
+        },
+        "departamentos": [],
+        "detalhes": {
+          "aCodCateg": [],
+          "cCodCateg": "1.01.03",
+          "cNumDoc": "",
+          "cObs": "",
+          "cTipo": "NFE",
+          "nCodCliente": 5963757368,
+          "nCodProjeto": 0
+        },
+        "diversos": {
+          "cHrConc": "",
+          "cIdentLanc": "",
+          "cNatureza": "R",
+          "cOrigem": "BAXR",
+          "cUsConc": "",
+          "dDtConc": "",
+          "nCodComprador": 0,
+          "nCodLancCR": 5964354918,
+          "nCodVendedor": 0
+        },
+        "info": {
+          "cImpAPI": "N",
+          "dAlt": "09/09/2026",
+          "dInc": "09/09/2026",
+          "hAlt": "11:50:02",
+          "hInc": "11:50:02",
+          "uAlt": "P000000002",
+          "uInc": "P000000002"
+        },
+        "nCodAgrup": 5964359132,
+        "nCodLanc": 5964359132,
+        "transferencia": {
+          "nCodCCDestino": 0
+        }
+      }
+    ]
+  }
+}
