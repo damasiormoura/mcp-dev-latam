@@ -183,11 +183,15 @@ reconectado às 23h47, já as listava, mas **não foram chamadas**. Estão
 cobertas só pelos testes: `index.test.ts` (a junção, na 0.9.0),
 `reconciliation.test.ts` e `read-tools.test.ts` (nesta PR).
 
+A 0.9.2 acrescentou `get_service_order_status` (`StatusOS`). Até a validação
+ao vivo ela está coberta só pelos testes. O plano e o resultado ficam em
+[0.9.2 — `get_service_order_status`](#092--get_service_order_status).
+
 ## Camada 2 — testes
 
 | Arquivo | O que prova |
 |---|---|
-| `src/__tests__/read-tools.test.ts` | As 49 tools de leitura (as 47 + as 2 da 0.9.0). A chamada mínima envia exatamente os padrões do builder, e cada propriedade declarada chega ao `param` com o próprio nome e valor, gerada do schema. Também: padrões que dependem do resto, restrições de schema achadas ao vivo, 18 fixtures de produção anonimizadas com teste de regressão cada, as descrições corrigidas e as respostas do modo demo. |
+| `src/__tests__/read-tools.test.ts` | As 50 tools de leitura (as 47, as 2 da 0.9.0 e a da 0.9.2). A chamada mínima envia exatamente os padrões do builder, e cada propriedade declarada chega ao `param` com o próprio nome e valor, gerada do schema. Também: padrões que dependem do resto, restrições de schema achadas ao vivo, 18 fixtures de produção anonimizadas com teste de regressão cada, as descrições corrigidas e as respostas do modo demo. |
 | `src/__tests__/fixtures/live/*.json` | 18 respostas reais anonimizadas: CNPJ, CPF, nomes, e-mails, telefones, chaves de NF-e e códigos de barras trocados por valores sintéticos. Um teste recusa CNPJ ou e-mail fora do padrão sintético. |
 | `src/__tests__/reconciliation.test.ts` | Bordas da junção de `list_unreconciled_entries`: extrato sem linhas, linha sem situação, página de baixas vazia, limite de 10 páginas. |
 | `src/__tests__/cancellation.test.ts` | Bordas da guarda de `cancel_account_receivable` (entra na meta de 100% de `src/tools/**`). |
@@ -597,3 +601,46 @@ da contagem.
 | list_salespeople | 10 | 7 | 3 | 0 |
 | **Total** | **330** | **249** | **68** | **13** |
 <!-- count:end -->
+
+## 0.9.2 — `get_service_order_status`
+
+_Validação ao vivo **pendente**: fazer depois do deploy da 0.9.2 e registrar
+o resultado aqui._
+
+Origem: em 02/10/2026 três OS faturadas tiveram o RPS rejeitado pela
+prefeitura de Ribeirão Preto (`cStatusRps` `003`). `list_nfse` e
+`get_service_order` não mostram o motivo. O `StatusOS`, chamado à mão fora do
+MCP, devolveu os erros EM076, E0314 e EM062. Com `lMsg=true` veio um bloco
+por tentativa de envio, da mais recente para a mais antiga: linhas
+informativas com `cSituacao` vazio ("Enviando o RPS 17 no Lote …", "Envio do
+RPS 17 retornou erros.") e, entre elas, as linhas de `ERRO`. Nas mesmas OS,
+`list_nfse` mostrava `cStatusNFSe` `"R"`, valor que a doc não lista.
+
+Só leitura, uma chamada por vez. As OS abaixo são identificadas pelo ID da
+Omie.
+
+| nCodOS | OS / RPS | Argumentos | Esperado | Resultado |
+|---|---|---|---|---|
+| 5975011809 | OS 38, RPS 17 | `lMsg` true | `cStatusRps` 003; ERRO EM076, E0314 e EM062 | pendente |
+| 5975012350 | OS 40, RPS 18 | `lMsg` true | `cStatusRps` 003; ERRO EM076, E0314 e EM062 | pendente |
+| 5963738552 | OS 23, RPS 19 | `lMsg` true | `cStatusRps` 003; ERRO EM076 e E0314 | pendente |
+| 5973717027 | OS 36, RPS 15 | — | `cStatusRps` 004; `nNfse` 1071; sem `xml_distr` | pendente |
+
+Se alguma das três rejeitadas já tiver sido corrigida e reenviada, o esperado
+muda: `002` (aguardando processamento) ou `004` (emitida). As mensagens de
+erro das tentativas anteriores devem continuar aparecendo com `lMsg=true`.
+
+Propriedades a conferir na mesma rodada:
+
+| Propriedade | Como | Esperado |
+|---|---|---|
+| `nCodOS` | as quatro chamadas acima | a OS pedida (`cNumOS` 38, 40, 23, 36) |
+| `cCodIntOS` | código inexistente | Client-103 (nenhuma OS da conta tem código de integração) |
+| `lMsg` | 5975011809 sem o campo e com `true` | sem: só as mensagens de erro; com: o histórico, com `cSituacao`, `dData` e `hHora` |
+| `lPdfDemo` / `lPdfDest` / `lRps` / `lPdfRecibo` | 5973717027 com cada um `true` | `cUrlPdfDemo`, `cUrlPdfDest`, `cUrlRps` e `cUrlPdfRecibo` preenchidos (ausentes ou vazios sem a flag) |
+| (resposta) | 5973717027 | sem `xml_distr`, que a tool remove; `cUrlNfse` presente |
+
+Depois da rodada: salvar uma resposta rejeitada e a da OS 36, anonimizadas, em
+`src/__tests__/fixtures/live/`, e trocar por elas as respostas montadas em
+`read-tools.test.ts`. O teste de fixtures exige `Production 2026-09-27` no
+`_comment`, então a expressão precisa aceitar também a data da nova captura.

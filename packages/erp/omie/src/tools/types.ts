@@ -158,7 +158,9 @@ export const ID = {
   customer: "Omie customer / supplier ID — codigo_cliente_omie from list_customers",
   product: "Omie product ID — codigo_produto from list_products",
   salesOrder: "Omie sales order ID — codigo_pedido from list_orders / create_order",
-  serviceOrder: "Omie service order ID — nCodOS from list_service_orders / create_service_order",
+  serviceOrder:
+    "Omie service order ID — nCodOS from list_service_orders / create_service_order (also returned as " +
+    "OrdemServico.nCodigoOS by list_nfse)",
 } as const;
 
 /**

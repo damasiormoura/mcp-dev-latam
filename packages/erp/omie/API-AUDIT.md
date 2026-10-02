@@ -582,10 +582,25 @@ Hoje dá para criar, alterar, consultar e faturar. Falta tudo entre isso:
 |---|---|
 | ✅ `invoice_service_order` | `/servicos/osp/ FaturarOS` |
 | ✅ `validate_service_order` / `cancel_service_order` | `ValidarOS` / `CancelarOS` |
-| ✅ `get_service_order` / `update_service_order` / `change_os_stage` | `/servicos/os/ ConsultarOS`, `AlterarOS`, `StatusOS`, `TrocarEtapaOS` |
+| ✅ `get_service_order` / `update_service_order` / `change_service_order_stage` | `/servicos/os/ ConsultarOS`, `AlterarOS`, `TrocarEtapaOS` |
+| ✅ `get_service_order_status` | `/servicos/os/ StatusOS` — status do lote e do RPS na prefeitura, com as mensagens dela (0.9.2; até a 0.9.1 a linha acima marcava `StatusOS` como feito, mas não havia tool) |
 | ✅ `list_services` / `create_service` | `/servicos/servico/` |
 | ✅ `list_nfse` | `/servicos/nfse/ ListarNFSEs` |
 | `create_service_contract` | `/servicos/contrato/` — já consta no roadmap v0.3 |
+
+> **0.9.2:** `get_service_order_status` chama `StatusOS` (`osStatusRequest`:
+> `nCodOS` ou `cCodIntOS`, `lMsg`, `lPdfDemo`, `lPdfDest`, `lRps`,
+> `lPdfRecibo`). Motivo: em 02/10/2026 três OS faturadas tiveram o RPS
+> rejeitado pela prefeitura (`cStatusRps` `003`), e só o `StatusOS`, chamado
+> à mão fora do MCP, trouxe os erros (EM076, E0314, EM062). `list_nfse` e
+> `get_service_order` não trazem mensagem. A tool remove `xml_distr` (o XML da
+> NFS-e, inline) da resposta. Na doc, `lMsg` aparece como "(S/N)", mas o tipo
+> é `boolean`, e foi `true` que funcionou em produção. Nas mesmas OS, o
+> `ListarNFSEs` devolveu `cStatusNFSe` `"R"`, valor que a doc não lista: em
+> `listarnfses_request` e em `Cabecalho` só aparecem C, F e N. A descrição de
+> `list_nfse` agora registra isso. O filtro continua aceitando só C/F/N, porque
+> não foi testado se `"R"` funciona como filtro. Reenviar o RPS é
+> `ReenviarOS` em `/servicos/osp/`, uma escrita que continua sem tool.
 
 ### 5.5 Cadastros — CRUD incompleto
 

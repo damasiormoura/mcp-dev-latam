@@ -10,6 +10,21 @@ const osKey = {
 } as const;
 const osKeyRequired = ["nCodOS", "cCodIntOS"] as const;
 
+/**
+ * StatusOS answers each RPS with xml_distr, the issued NFS-e's distribution
+ * XML, inline. It can be large and says nothing the status fields and the city
+ * hall's messages do not — the tool is there to diagnose a rejection, and
+ * cUrlNfse already links to the note — so it is dropped before the agent sees
+ * the result.
+ */
+function withoutDistributionXml(result: any): any {
+  if (!Array.isArray(result?.ListaRpsNfse)) return result;
+  return {
+    ...result,
+    ListaRpsNfse: result.ListaRpsNfse.map(({ xml_distr, ...rps }: Record<string, unknown>) => rps),
+  };
+}
+
 /** The ServicosPrestados item shape, shared by IncluirOS and AlterarOS. */
 const servicoPrestado = {
   type: "object",
@@ -165,7 +180,10 @@ export const serviceTools: OmieTool[] = [
   },
   {
     name: "get_service_order",
-    description: "Consult a specific service order in Omie ERP (ConsultarOS) by nCodOS, integration code or the OS number shown to the customer",
+    description:
+      "Consult a specific service order in Omie ERP (ConsultarOS) by nCodOS, integration code or the OS " +
+      "number shown to the customer. It says nothing about the NFS-e at the city hall — whether the RPS " +
+      "was accepted, or why it was rejected, is get_service_order_status.",
     path: OS,
     call: "ConsultarOS",
     inputSchema: {
@@ -173,6 +191,50 @@ export const serviceTools: OmieTool[] = [
       properties: { ...osKey, cNumOS: { type: "string", description: "OS number as shown to the customer (alternative)" } },
       anyOfRequired: [...osKeyRequired, "cNumOS"],
     },
+  },
+  // Production, 2026-10-02: three billed OS had their RPS rejected by the city
+  // hall (cStatusRps "003"), and no tool here could say why — list_nfse and
+  // get_service_order carry no message. StatusOS, called by hand, returned the
+  // city hall's errors (EM076, E0314, EM062). With lMsg=true each send attempt
+  // came back as its own block, newest first: informative lines with an empty
+  // cSituacao ("Enviando o RPS 17 no Lote ...", "Envio do RPS 17 retornou
+  // erros.") around the ERRO lines, so an RPS sent five times showed five.
+  {
+    name: "get_service_order_status",
+    description:
+      "Get the city-hall status of a service order's RPS / NFS-e in Omie ERP (StatusOS), with the city " +
+      "hall's own messages — the only read that says why an RPS was rejected: list_nfse and " +
+      "get_service_order carry no message. Identify the OS by nCodOS (list_service_orders; returned as " +
+      "OrdemServico.nCodigoOS by list_nfse) or cCodIntOS. ListaRpsNfse has one entry per RPS; its " +
+      "cStatusLote / cStatusRps are \"001\" waiting to be sent, \"002\" sent and awaiting processing, " +
+      "\"003\" processed with error, \"004\" processed (nNfse and cCodVerif filled), \"005\" cancelled. " +
+      "mensagens[] carries cCodigo, cDescricao and cCorrecao as the city hall sent them. Without lMsg only " +
+      "the error messages come back; lMsg=true returns the whole exchange, with cSituacao (ERRO / ALERTA / " +
+      "SUCESSO, empty on informative lines such as \"Enviando o RPS ... para a prefeitura\"), dData and " +
+      "hHora — one block per send attempt, newest first, so an RPS sent five times repeats its errors " +
+      "five times. xml_distr, the NFS-e's XML inline, is left out of the result; cUrlNfse links to the " +
+      "note. This only reads: it does not resend the RPS — that is ReenviarOS on /servicos/osp/, a write " +
+      "this server does not expose.",
+    path: OS,
+    call: "StatusOS",
+    inputSchema: {
+      type: "object",
+      properties: {
+        ...osKey,
+        lMsg: {
+          type: "boolean",
+          description:
+            "true: every message exchanged with the city hall, per send attempt, with cSituacao, dData and " +
+            "hHora. Absent or false: only the error messages",
+        },
+        lPdfDemo: { type: "boolean", description: "Include cUrlPdfDemo, the link to the NFS-e statement (demonstrativo) PDF" },
+        lPdfDest: { type: "boolean", description: "Include cUrlPdfDest, the link to the recipient's NFS-e PDF" },
+        lRps: { type: "boolean", description: "Include cUrlRps, the link to the RPS" },
+        lPdfRecibo: { type: "boolean", description: "Include cUrlPdfRecibo, the link to the receipt PDF" },
+      },
+      anyOfRequired: osKeyRequired,
+    },
+    transform: withoutDistributionXml,
   },
   {
     name: "update_service_order",
@@ -235,7 +297,9 @@ export const serviceTools: OmieTool[] = [
       "Bill a service order in Omie ERP (FaturarOS): issues the NFS-e at the city hall and creates the AR " +
       "title(s) — a fiscal act, confirm with the person first and run validate_service_order before. The " +
       "undo is cancel_service_order with cCancelarNfse=\"S\". The service-side counterpart of " +
-      "invoice_sales_order.",
+      "invoice_sales_order. The city hall processes the RPS afterwards, so a FaturarOS that succeeds does not " +
+      "mean the NFS-e was issued: get_service_order_status says whether it was (cStatusRps \"004\") or why " +
+      "the city hall rejected it.",
     path: OSP,
     call: "FaturarOS",
     inputSchema: { type: "object", properties: osKey, anyOfRequired: osKeyRequired },
@@ -288,7 +352,11 @@ export const serviceTools: OmieTool[] = [
   },
   {
     name: "list_nfse",
-    description: "List issued service invoices (NFS-e) in Omie ERP (ListarNFSEs)",
+    description:
+      "List issued service invoices (NFS-e) in Omie ERP (ListarNFSEs). It carries no city-hall message: " +
+      "for why an RPS was rejected use get_service_order_status with the row's OrdemServico.nCodigoOS. " +
+      "Rows can also come back with cStatusNFSe \"R\", which Omie's documentation does not list (only C, " +
+      "F and N): seen in production on 2026-10-02 on service orders whose RPS the city hall had rejected.",
     path: "/servicos/nfse/",
     call: "ListarNFSEs",
     inputSchema: {

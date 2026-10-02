@@ -49,13 +49,13 @@ import { TOOLS, findTool, INSTRUCTIONS, annotationsFor } from "./tools/index.js"
 import { ToolRefusal } from "./tools/types.js";
 import { type Caller, attributionText, buildEntry, closeAuditLog, currentCaller, record, reopenAuditLog, stamp, withCaller } from "./audit.js";
 
-const VERSION = "0.9.1";
+const VERSION = "0.9.2";
 
 const DEMO_MODE = process.argv.includes("--demo") || process.env.MCP_DEMO === "true";
 
 // Curated, realistic responses — shaped from the actual Omie response *type*
 // fields (ConsultarContaPagar's own conta_pagar_lancar_pagamento_resposta,
-// GerarPix's GerarPixResponse, and so on), not invented. 22 of 88 tools have
+// GerarPix's GerarPixResponse, and so on), not invented. 22 of 89 tools have
 // one; the rest fall back to echoing the validated arguments (see
 // demoFallback below) rather than a shape this server hasn't verified against
 // the API — extending this further means pulling more response *types* from
