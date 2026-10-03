@@ -199,6 +199,9 @@ export const serviceTools: OmieTool[] = [
   // came back as its own block, newest first: informative lines with an empty
   // cSituacao ("Enviando o RPS 17 no Lote ...", "Envio do RPS 17 retornou
   // erros.") around the ERRO lines, so an RPS sent five times showed five.
+  // Run through this tool on 2026-10-03 (READ-TOOLS-LIVE.md): without lMsg the
+  // same OS returned its 14 ERRO lines in the reverse order, oldest first, with
+  // no date — nothing tells the latest attempt's errors from the earlier ones.
   {
     name: "get_service_order_status",
     description:
@@ -209,12 +212,14 @@ export const serviceTools: OmieTool[] = [
       "cStatusLote / cStatusRps are \"001\" waiting to be sent, \"002\" sent and awaiting processing, " +
       "\"003\" processed with error, \"004\" processed (nNfse and cCodVerif filled), \"005\" cancelled. " +
       "mensagens[] carries cCodigo, cDescricao and cCorrecao as the city hall sent them. Without lMsg only " +
-      "the error messages come back; lMsg=true returns the whole exchange, with cSituacao (ERRO / ALERTA / " +
-      "SUCESSO, empty on informative lines such as \"Enviando o RPS ... para a prefeitura\"), dData and " +
-      "hHora — one block per send attempt, newest first, so an RPS sent five times repeats its errors " +
-      "five times. xml_distr, the NFS-e's XML inline, is left out of the result; cUrlNfse links to the " +
-      "note. This only reads: it does not resend the RPS — that is ReenviarOS on /servicos/osp/, a write " +
-      "this server does not expose.",
+      "the error messages come back, OLDEST first and with no date: every send attempt's errors run " +
+      "together and nothing says which are the latest. lMsg=true returns the whole exchange, newest " +
+      "first, with cSituacao (ERRO / ALERTA / SUCESSO, empty on informative lines), dData and hHora — one " +
+      "block per send attempt, each ending in \"Enviando o RPS ... para a prefeitura\" — so the first " +
+      "block holds the latest attempt's errors; use it when the RPS was resent. xml_distr, the NFS-e's XML " +
+      "inline, is left out of the result; cUrlNfse (and danfe, the same link) opens the note. This only " +
+      "reads: it does not resend the RPS — that is ReenviarOS on /servicos/osp/, a write this server does " +
+      "not expose.",
     path: OS,
     call: "StatusOS",
     inputSchema: {
@@ -224,13 +229,14 @@ export const serviceTools: OmieTool[] = [
         lMsg: {
           type: "boolean",
           description:
-            "true: every message exchanged with the city hall, per send attempt, with cSituacao, dData and " +
-            "hHora. Absent or false: only the error messages",
+            "true: every message exchanged with the city hall, newest first, one block per send attempt, with " +
+            "cSituacao, dData and hHora. Absent or false: only the error messages, oldest first and undated, " +
+            "so the attempts cannot be told apart",
         },
-        lPdfDemo: { type: "boolean", description: "Include cUrlPdfDemo, the link to the NFS-e statement (demonstrativo) PDF" },
-        lPdfDest: { type: "boolean", description: "Include cUrlPdfDest, the link to the recipient's NFS-e PDF" },
-        lRps: { type: "boolean", description: "Include cUrlRps, the link to the RPS" },
-        lPdfRecibo: { type: "boolean", description: "Include cUrlPdfRecibo, the link to the receipt PDF" },
+        lPdfDemo: { type: "boolean", description: "Include cUrlPdfDemo, a pre-signed (expiring) link to the NFS-e statement (demonstrativo) PDF" },
+        lPdfDest: { type: "boolean", description: "Include cUrlPdfDest, a pre-signed (expiring) link to the recipient's NFS-e PDF" },
+        lRps: { type: "boolean", description: "Include cUrlRps, the link to the RPS — came back empty for an issued Ribeirão Preto NFS-e" },
+        lPdfRecibo: { type: "boolean", description: "Include cUrlPdfRecibo, the link to the receipt PDF — empty on an OS with no receipt (cNumRecibo \"0\")" },
       },
       anyOfRequired: osKeyRequired,
     },

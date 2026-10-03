@@ -183,8 +183,8 @@ reconectado às 23h47, já as listava, mas **não foram chamadas**. Estão
 cobertas só pelos testes: `index.test.ts` (a junção, na 0.9.0),
 `reconciliation.test.ts` e `read-tools.test.ts` (nesta PR).
 
-A 0.9.2 acrescentou `get_service_order_status` (`StatusOS`). Até a validação
-ao vivo ela está coberta só pelos testes. O plano e o resultado ficam em
+A 0.9.2 acrescentou `get_service_order_status` (`StatusOS`). Ela foi validada
+ao vivo à parte, em 2026-10-03: ver
 [0.9.2 — `get_service_order_status`](#092--get_service_order_status).
 
 ## Camada 2 — testes
@@ -604,43 +604,76 @@ da contagem.
 
 ## 0.9.2 — `get_service_order_status`
 
-_Validação ao vivo **pendente**: fazer depois do deploy da 0.9.2 e registrar
-o resultado aqui._
+_Data: 2026-10-03 (07h56–07h57 UTC). Servidor em produção no conector:
+`mcp-omie` 0.9.2 (deploy run 37107591696, 07h55 UTC). As correções desta
+seção saem na **0.9.3**._
 
 Origem: em 02/10/2026 três OS faturadas tiveram o RPS rejeitado pela
 prefeitura de Ribeirão Preto (`cStatusRps` `003`). `list_nfse` e
 `get_service_order` não mostram o motivo. O `StatusOS`, chamado à mão fora do
-MCP, devolveu os erros EM076, E0314 e EM062. Com `lMsg=true` veio um bloco
-por tentativa de envio, da mais recente para a mais antiga: linhas
-informativas com `cSituacao` vazio ("Enviando o RPS 17 no Lote …", "Envio do
-RPS 17 retornou erros.") e, entre elas, as linhas de `ERRO`. Nas mesmas OS,
-`list_nfse` mostrava `cStatusNFSe` `"R"`, valor que a doc não lista.
+MCP, devolveu os erros EM076, E0314 e EM062.
 
-Só leitura, uma chamada por vez. As OS abaixo são identificadas pelo ID da
-Omie.
+### Como foi feito
 
-| nCodOS | OS / RPS | Argumentos | Esperado | Resultado |
+- **Só leitura.** Foram 11 chamadas, uma de cada vez, pelo conector Omie da
+  sessão: 10 a `get_service_order_status` e 1 a `list_nfse`. Nenhuma tool de
+  escrita foi chamada. O único erro foi o Client-103 esperado em `cCodIntOS`.
+  Não houve REDUNDANT.
+- **Sem dados pessoais.** Aparecem só IDs da Omie, números de OS, RPS, lote e
+  NFS-e, e os códigos e textos de erro da prefeitura, que são genéricos. CNPJ,
+  inscrição municipal, nome do cliente, código de verificação e links ficam
+  fora daqui e foram anonimizados nas fixtures.
+
+### OS do plano
+
+| nCodOS | OS / RPS | Argumentos | Resultado | Evidência |
 |---|---|---|---|---|
-| 5975011809 | OS 38, RPS 17 | `lMsg` true | `cStatusRps` 003; ERRO EM076, E0314 e EM062 | pendente |
-| 5975012350 | OS 40, RPS 18 | `lMsg` true | `cStatusRps` 003; ERRO EM076, E0314 e EM062 | pendente |
-| 5963738552 | OS 23, RPS 19 | `lMsg` true | `cStatusRps` 003; ERRO EM076 e E0314 | pendente |
-| 5973717027 | OS 36, RPS 15 | — | `cStatusRps` 004; `nNfse` 1071; sem `xml_distr` | pendente |
+| 5975011809 | OS 38, RPS 17 | `lMsg` true | ✅ | `cStatusLote` / `cStatusRps` 003, lote 5975141787. Cinco tentativas em 02/10 (14:23, 14:39, 17:07, 17:30, 18:08), cada uma com EM076, EM062 e E0314, menos a das 17:30, que trouxe só EM076 e E0314. 24 mensagens. |
+| 5975012350 | OS 40, RPS 18 | `lMsg` true | ✅ | 003, lote 5975217128. Uma tentativa (16:35) com EM076, EM062 e E0314. |
+| 5963738552 | OS 23, RPS 19 | `lMsg` true | ✅ | 003, lote 5975278566. Uma tentativa (19:29) com EM076 e E0314. |
+| 5973717027 | OS 36, RPS 15 | — | ✅ | 004, lote 5973732546, `nNfse` 1071, `cCodVerif` preenchido, `mensagens` vazio, `cUrlNfse` presente. |
 
-Se alguma das três rejeitadas já tiver sido corrigida e reenviada, o esperado
-muda: `002` (aguardando processamento) ou `004` (emitida). As mensagens de
-erro das tentativas anteriores devem continuar aparecendo com `lMsg=true`.
+Nenhuma das três rejeitadas tinha sido reenviada depois de 02/10.
 
-Propriedades a conferir na mesma rodada:
+### Propriedades
 
-| Propriedade | Como | Esperado |
-|---|---|---|
-| `nCodOS` | as quatro chamadas acima | a OS pedida (`cNumOS` 38, 40, 23, 36) |
-| `cCodIntOS` | código inexistente | Client-103 (nenhuma OS da conta tem código de integração) |
-| `lMsg` | 5975011809 sem o campo e com `true` | sem: só as mensagens de erro; com: o histórico, com `cSituacao`, `dData` e `hHora` |
-| `lPdfDemo` / `lPdfDest` / `lRps` / `lPdfRecibo` | 5973717027 com cada um `true` | `cUrlPdfDemo`, `cUrlPdfDest`, `cUrlRps` e `cUrlPdfRecibo` preenchidos (ausentes ou vazios sem a flag) |
-| (resposta) | 5973717027 | sem `xml_distr`, que a tool remove; `cUrlNfse` presente |
+| Propriedade | Argumentos usados | Resultado | Evidência |
+|---|---|---|---|
+| nCodOS | as quatro OS acima | ✅ | `cNumOS` 38, 40, 23 e 36 |
+| cCodIntOS | código inexistente | ✅ | Client-103 "OS não cadastrada para o Código de Integração": chega à Omie (nenhuma OS tem código) |
+| lMsg | 5975011809 com `true` e sem o campo | ⚠️ | com: o histórico, ver abaixo. Sem: as 14 linhas de ERRO das cinco tentativas, **da mais antiga para a mais recente** (o inverso exato da ordem com `lMsg`), só com `cCodigo`, `cCorrecao` e `cDescricao`, sem `cSituacao`, data ou hora. Não dá para saber quais erros são da última tentativa. **Corrigido** na descrição (0.9.3) |
+| lPdfDemo | 5973717027 | ✅ | `cUrlPdfDemo` aparece, um link S3 pré-assinado com prazo. Sem a flag, a chave não vem |
+| lPdfDest | 5973717027 | ✅ | `cUrlPdfDest` aparece, também pré-assinado. Sem a flag, a chave não vem |
+| lRps | 5973717027 | ⚠️ | a chave `cUrlRps` aparece, mas vazia. Sem a flag, ela não vem. A flag chega à Omie; esta NFS-e não tem link de RPS. Registrado na descrição |
+| lPdfRecibo | 5973717027 | ⚠️ | sem dados: `cUrlPdfRecibo` vem vazio com e sem a flag; a OS não tem recibo (`cNumRecibo` "0") |
+| (resposta) xml_distr | as quatro OS | ⚠️ | ausente do resultado. Não dá para saber pelo conector se a Omie mandou o campo e a tool tirou, ou se ele nem veio: o log de auditoria guarda só um resumo. A remoção fica provada pelo teste |
+| (resposta) cInscrMunicipal | as quatro OS | ⚠️ | vem como string de 8 dígitos; a doc diz `integer`. Só registrado |
+| (resposta) danfe | 5973717027 | ⚠️ | igual a `cUrlNfse`, o link da nota na prefeitura, não um DANFE. Registrado na descrição |
 
-Depois da rodada: salvar uma resposta rejeitada e a da OS 36, anonimizadas, em
-`src/__tests__/fixtures/live/`, e trocar por elas as respostas montadas em
-`read-tools.test.ts`. O teste de fixtures exige `Production 2026-09-27` no
-`_comment`, então a expressão precisa aceitar também a data da nova captura.
+Com `lMsg=true`, cada tentativa vem como um bloco, e dentro do bloco também a
+mais recente vem primeiro: as linhas de ERRO, depois "Envio do RPS 17 retornou
+erros." e, por último, "Enviando o RPS 17 no Lote 5975141787 para a prefeitura
+da sua cidade.". As duas linhas informativas têm `cSituacao` vazio. `cAnexo` é
+"S" nas de ERRO e em "retornou erros", e "N" em "Enviando". `cUsuario` é
+"Integração" em todas.
+
+### `list_nfse` na mesma OS
+
+| Tool | Argumentos usados | Resultado | Evidência |
+|---|---|---|---|
+| list_nfse | `nCodigoOS` 5975011809 | ✅ | `Cabecalho.cStatusNFSe` "R", fora dos valores da doc (C/F/N), com `RPS.cStatusRPS` "003" e nenhuma mensagem. Confirma o que a descrição da 0.9.2 diz |
+
+### Testes
+
+As respostas montadas em `read-tools.test.ts` foram trocadas por três
+fixtures anonimizadas desta rodada, em `src/__tests__/fixtures/live/`:
+
+- `get_service_order_status.rejected-history.json`: a OS 38 com `lMsg`, nos
+  cinco blocos;
+- `get_service_order_status.errors-only.json`: a OS 38 sem `lMsg`, com a ordem
+  invertida;
+- `get_service_order_status.issued.json`: a OS 36 com `lPdfDemo`.
+
+As capturas passaram pelo conector, depois do `transform`. Por isso o teste da
+OS 36 recoloca um `xml_distr` antes de mostrar que a tool o remove. O teste de
+fixtures agora aceita qualquer data de captura no `_comment`.

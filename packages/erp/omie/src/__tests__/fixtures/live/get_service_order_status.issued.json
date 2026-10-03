@@ -1,0 +1,47 @@
+{
+  "_comment": "Production 2026-10-03: StatusOS with lPdfDemo=true on OS 36, NFS-e 1071 issued 29/09. cStatusRps 004, nNfse and cCodVerif filled, mensagens empty; cUrlNfse and danfe are the same city-hall link, cUrlPdfDemo a pre-signed PDF link that is absent without the flag. Captured through the connector (after the 0.9.2 transform). CNPJ, municipal registration, verification code, city-hall link token and the S3 credentials anonymized.",
+  "tool": "get_service_order_status",
+  "args": {
+    "nCodOS": 5973717027,
+    "lPdfDemo": true
+  },
+  "response": {
+    "cCodIntOS": "",
+    "nCodOS": 5973717027,
+    "cNumOS": "36",
+    "cNumContrato": "",
+    "cNumRecibo": "0",
+    "cNumPedido": "",
+    "cEtapa": "60",
+    "cCancelada": "N",
+    "cFaturada": "S",
+    "cAmbiente": "P",
+    "dDtInc": "29/09/2026",
+    "cHrInc": "09:28:44",
+    "dDtAlt": "29/09/2026",
+    "cHrAlt": "11:01:07",
+    "dDtFat": "29/09/2026",
+    "cHrFat": "11:11:04",
+    "dDtCanc": "",
+    "cHrCanc": "",
+    "nValorTot": 3200,
+    "cUrlPdfRecibo": "",
+    "ListaRpsNfse": [
+      {
+        "cCNPJ": "11011011000111",
+        "cCodVerif": "ABC123DEF",
+        "cInscrMunicipal": "10000001",
+        "cProtocolo": "",
+        "cStatusLote": "004",
+        "cStatusRps": "004",
+        "cUrlNfse": "https://connect.omie.com.br/nfse?redirect=padrao_notacontrolv204&cidade=sp_ribeiraopreto&link=https://www.issnetonline.com.br/ribeiraopreto/online/NotaDigital/Nota_Digital_204.aspx?EXEMPLO",
+        "cUrlPdfDemo": "https://cdn.omie.com.br/repository/exemplo/exemplo/demonstrativo_nfse_1071.pdf?response-content-type=application%2Fpdf&AWSAccessKeyId=EXEMPLO&Expires=1791619019&Signature=EXEMPLO",
+        "danfe": "https://connect.omie.com.br/nfse?redirect=padrao_notacontrolv204&cidade=sp_ribeiraopreto&link=https://www.issnetonline.com.br/ribeiraopreto/online/NotaDigital/Nota_Digital_204.aspx?EXEMPLO",
+        "mensagens": [],
+        "nLote": 5973732546,
+        "nNfse": "1071",
+        "nRps": "15"
+      }
+    ]
+  }
+}

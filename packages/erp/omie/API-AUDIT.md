@@ -601,6 +601,13 @@ Hoje dá para criar, alterar, consultar e faturar. Falta tudo entre isso:
 > `list_nfse` agora registra isso. O filtro continua aceitando só C/F/N, porque
 > não foi testado se `"R"` funciona como filtro. Reenviar o RPS é
 > `ReenviarOS` em `/servicos/osp/`, uma escrita que continua sem tool.
+>
+> **0.9.3:** validada em produção em 2026-10-03 (ver
+> [`READ-TOOLS-LIVE.md`](./READ-TOOLS-LIVE.md)). As quatro OS do plano deram o
+> esperado, e `list_nfse` confirmou o `"R"`. A doc não diz, e a descrição
+> agora diz: sem `lMsg`, os erros de todas as tentativas vêm do mais antigo
+> para o mais recente e sem data, então só com `lMsg=true` dá para separar os
+> da última tentativa.
 
 ### 5.5 Cadastros — CRUD incompleto
 

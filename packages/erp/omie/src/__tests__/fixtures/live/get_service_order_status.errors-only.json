@@ -1,0 +1,115 @@
+{
+  "_comment": "Production 2026-10-03: the same OS 38 without lMsg. Only the 14 ERRO lines of the five attempts, OLDEST first (the exact reverse of the lMsg=true order) and with cCodigo / cCorrecao / cDescricao alone: no cSituacao, date or time, so nothing says which errors are the latest attempt's. CNPJ, municipal registration and order number anonymized.",
+  "tool": "get_service_order_status",
+  "args": {
+    "nCodOS": 5975011809
+  },
+  "response": {
+    "cCodIntOS": "",
+    "nCodOS": 5975011809,
+    "cNumOS": "38",
+    "cNumContrato": "",
+    "cNumRecibo": "0",
+    "cNumPedido": "1000",
+    "cEtapa": "60",
+    "cCancelada": "N",
+    "cFaturada": "S",
+    "cAmbiente": "P",
+    "dDtInc": "02/10/2026",
+    "cHrInc": "02:31:07",
+    "dDtAlt": "02/10/2026",
+    "cHrAlt": "18:07:46",
+    "dDtFat": "02/10/2026",
+    "cHrFat": "18:07:55",
+    "dDtCanc": "",
+    "cHrCanc": "",
+    "nValorTot": 1200,
+    "cUrlPdfRecibo": "",
+    "ListaRpsNfse": [
+      {
+        "cCNPJ": "11011011000111",
+        "cCodVerif": "",
+        "cInscrMunicipal": "10000001",
+        "cProtocolo": "",
+        "cStatusLote": "003",
+        "cStatusRps": "003",
+        "danfe": "",
+        "mensagens": [
+          {
+            "cCodigo": "E0314",
+            "cCorrecao": "Verificar se o código de tributação municipal informado existe e está administrado pelo município de incidência do ISSQN na data de competência informada na DPS.",
+            "cDescricao": "O código de tributação municipal informado não existe ou não está administrado pelo município de incidência do ISSQN na data de competência informada na DPS,"
+          },
+          {
+            "cCodigo": "EM062",
+            "cCorrecao": "O conjunto cTribNac, cNBS, cClassTrib e cIndOp não possuem correlação. Acesse https://www.notacontrol.com.br/download/nfse/Correlacao_TribNac_NBS_cClassTribIBSCBS_CSTIBSCBS_IndOp.xlsx.",
+            "cDescricao": "O Cód. Tributação Nacional, NBS, Cód. Ind. Operação e Classificação Tributária precisam estar correlacionados."
+          },
+          {
+            "cCodigo": "EM076",
+            "cCorrecao": "Consulte junto a prefeitura de seu município o código vigente.",
+            "cDescricao": "O Código de tributação informado não pertence a este contribuinte."
+          },
+          {
+            "cCodigo": "E0314",
+            "cCorrecao": "Verificar se o código de tributação municipal informado existe e está administrado pelo município de incidência do ISSQN na data de competência informada na DPS.",
+            "cDescricao": "O código de tributação municipal informado não existe ou não está administrado pelo município de incidência do ISSQN na data de competência informada na DPS,"
+          },
+          {
+            "cCodigo": "EM062",
+            "cCorrecao": "O conjunto cTribNac, cNBS, cClassTrib e cIndOp não possuem correlação. Acesse https://www.notacontrol.com.br/download/nfse/Correlacao_TribNac_NBS_cClassTribIBSCBS_CSTIBSCBS_IndOp.xlsx.",
+            "cDescricao": "O Cód. Tributação Nacional, NBS, Cód. Ind. Operação e Classificação Tributária precisam estar correlacionados."
+          },
+          {
+            "cCodigo": "EM076",
+            "cCorrecao": "Consulte junto a prefeitura de seu município o código vigente.",
+            "cDescricao": "O Código de tributação informado não pertence a este contribuinte."
+          },
+          {
+            "cCodigo": "E0314",
+            "cCorrecao": "Verificar se o código de tributação municipal informado existe e está administrado pelo município de incidência do ISSQN na data de competência informada na DPS.",
+            "cDescricao": "O código de tributação municipal informado não existe ou não está administrado pelo município de incidência do ISSQN na data de competência informada na DPS,"
+          },
+          {
+            "cCodigo": "EM062",
+            "cCorrecao": "O conjunto cTribNac, cNBS, cClassTrib e cIndOp não possuem correlação. Acesse https://www.notacontrol.com.br/download/nfse/Correlacao_TribNac_NBS_cClassTribIBSCBS_CSTIBSCBS_IndOp.xlsx.",
+            "cDescricao": "O Cód. Tributação Nacional, NBS, Cód. Ind. Operação e Classificação Tributária precisam estar correlacionados."
+          },
+          {
+            "cCodigo": "EM076",
+            "cCorrecao": "Consulte junto a prefeitura de seu município o código vigente.",
+            "cDescricao": "O Código de tributação informado não pertence a este contribuinte."
+          },
+          {
+            "cCodigo": "E0314",
+            "cCorrecao": "Verificar se o código de tributação municipal informado existe e está administrado pelo município de incidência do ISSQN na data de competência informada na DPS.",
+            "cDescricao": "O código de tributação municipal informado não existe ou não está administrado pelo município de incidência do ISSQN na data de competência informada na DPS,"
+          },
+          {
+            "cCodigo": "EM076",
+            "cCorrecao": "Consulte junto a prefeitura de seu município o código vigente.",
+            "cDescricao": "O Código de tributação informado não pertence a este contribuinte."
+          },
+          {
+            "cCodigo": "E0314",
+            "cCorrecao": "Verificar se o código de tributação municipal informado existe e está administrado pelo município de incidência do ISSQN na data de competência informada na DPS.",
+            "cDescricao": "O código de tributação municipal informado não existe ou não está administrado pelo município de incidência do ISSQN na data de competência informada na DPS,"
+          },
+          {
+            "cCodigo": "EM062",
+            "cCorrecao": "O conjunto cTribNac, cNBS, cClassTrib e cIndOp não possuem correlação. Acesse https://www.notacontrol.com.br/download/nfse/Correlacao_TribNac_NBS_cClassTribIBSCBS_CSTIBSCBS_IndOp.xlsx.",
+            "cDescricao": "O Cód. Tributação Nacional, NBS, Cód. Ind. Operação e Classificação Tributária precisam estar correlacionados."
+          },
+          {
+            "cCodigo": "EM076",
+            "cCorrecao": "Consulte junto a prefeitura de seu município o código vigente.",
+            "cDescricao": "O Código de tributação informado não pertence a este contribuinte."
+          }
+        ],
+        "nLote": 5975141787,
+        "nNfse": "",
+        "nRps": "17"
+      }
+    ]
+  }
+}
