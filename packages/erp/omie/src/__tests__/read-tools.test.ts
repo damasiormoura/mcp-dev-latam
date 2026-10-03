@@ -7,9 +7,9 @@ import { fileURLToPath } from "node:url";
  *
  * Every property of the 47 read tools production ran (0.8.2) was exercised
  * against the ERP on 2026-09-27 (READ-TOOLS-LIVE.md has the matrix);
- * get_cash_entry and list_unreconciled_entries came with 0.9.0, and
- * get_service_order_status with 0.9.2, and are pinned here from the schema
- * alone until they are validated live. This file pins the
+ * get_cash_entry and list_unreconciled_entries came with 0.9.0 and are pinned
+ * here from the schema alone; get_service_order_status came with 0.9.2 and was
+ * run live on 2026-10-03. This file pins the
  * half of that which does not need Omie: that each property reaches the
  * `param` Omie receives under its own name and with the value given, that the
  * defaults the param builders inject are exactly the ones intended — and, from
@@ -346,7 +346,7 @@ describe("regressions from live behaviour (anonymized production responses)", ()
   it("has a fixture for each live finding", () => {
     expect(fixtures.length).toBeGreaterThanOrEqual(18);
     for (const [f, body] of fixtures) {
-      expect(body._comment, f).toMatch(/Production 2026-09-27/);
+      expect(body._comment, f).toMatch(/^Production 2026-\d{2}-\d{2}\b/);
       expect(f.startsWith(`${body.tool}.`), f).toBe(true);
     }
   });
@@ -469,64 +469,70 @@ describe("regressions from live behaviour (anonymized production responses)", ()
     const statement = await replay(fx("get_bank_statement.period.json"));
     expect(statement.out.listaMovimentos[1]).toMatchObject({ cSituacao: "Não conciliado", nValorDocumento: 6000 });
   });
+
+  it("get_service_order_status with lMsg: one block per send attempt, newest first, each ending in \"Enviando o RPS\"", async () => {
+    const { sent, out } = await replay(fx("get_service_order_status.rejected-history.json"));
+    expect(sent).toEqual({ nCodOS: 5975011809, lMsg: true });
+    const [rps] = out.ListaRpsNfse;
+    expect(rps).toMatchObject({ nRps: "17", cStatusRps: "003", cStatusLote: "003", nNfse: "" });
+
+    // Newest first inside a block too, so a block's last line is the "Enviando" one.
+    const blocks: any[][] = [[]];
+    for (const m of rps.mensagens) {
+      blocks.at(-1)!.push(m);
+      if (m.cDescricao.startsWith("Enviando o RPS 17")) blocks.push([]);
+    }
+    expect(blocks.pop()).toEqual([]);
+    expect(blocks.map((b) => b[0].hHora)).toEqual(["18:08:15", "17:30:18", "17:07:11", "14:39:07", "14:23:09"]);
+    expect(blocks.map((b) => b.filter((m) => m.cSituacao === "ERRO").map((m) => m.cCodigo))).toEqual([
+      ["EM076", "EM062", "E0314"],
+      ["EM076", "E0314"],
+      ["EM076", "EM062", "E0314"],
+      ["EM076", "EM062", "E0314"],
+      ["EM076", "EM062", "E0314"],
+    ]);
+    for (const b of blocks) {
+      expect(b.slice(-2).map((m) => [m.cSituacao, m.cDescricao])).toEqual([
+        ["", "Envio do RPS 17 retornou erros."],
+        ["", "Enviando o RPS 17 no Lote 5975141787 para a prefeitura da sua cidade."],
+      ]);
+    }
+  });
+
+  it("get_service_order_status without lMsg: the errors alone, oldest first, with no date to tell attempts apart", async () => {
+    const history = (await replay(fx("get_service_order_status.rejected-history.json"))).out.ListaRpsNfse[0].mensagens;
+    const { sent, out } = await replay(fx("get_service_order_status.errors-only.json"));
+    expect(sent).toEqual({ nCodOS: 5975011809 });
+
+    const errors = out.ListaRpsNfse[0].mensagens;
+    expect(errors).toHaveLength(14);
+    for (const m of errors) expect(Object.keys(m).sort()).toEqual(["cCodigo", "cCorrecao", "cDescricao"]);
+    // The exact reverse of the ERRO lines lMsg=true lists.
+    expect(errors.map((m: any) => m.cCodigo)).toEqual(
+      history.filter((m: any) => m.cSituacao === "ERRO").map((m: any) => m.cCodigo).reverse()
+    );
+  });
+
+  it("get_service_order_status on an issued NFS-e: 004 with the note's number and links, xml_distr left out", async () => {
+    const body = fx("get_service_order_status.issued.json");
+    // Captured through the connector, after the transform, so the XML cannot be
+    // in the capture; it is put back here to show the transform takes it out.
+    const xml = `<?xml version="1.0" encoding="UTF-8"?><CompNfse>${"<x/>".repeat(5000)}</CompNfse>`;
+    const [captured] = body.response.ListaRpsNfse;
+    const { sent, out } = await replay({ ...body, response: { ...body.response, ListaRpsNfse: [{ ...captured, xml_distr: xml }] } });
+    expect(sent).toEqual({ nCodOS: 5973717027, lPdfDemo: true });
+
+    expect(JSON.stringify(out)).not.toContain("CompNfse");
+    const [rps] = out.ListaRpsNfse;
+    expect(rps).not.toHaveProperty("xml_distr");
+    expect(rps).toMatchObject({ nRps: "15", cStatusLote: "004", cStatusRps: "004", nNfse: "1071", mensagens: [] });
+    expect(rps.cUrlPdfDemo).toMatch(/demonstrativo_nfse_1071\.pdf/);
+    expect(rps.cUrlNfse).toBe(rps.danfe);
+  });
 });
 
-/**
- * get_service_order_status (0.9.2) has not been called live yet, so these
- * responses are not captured ones: they are shaped from osStatusResponse as
- * Omie publishes it and from what StatusOS returned by hand on 2026-10-02 for
- * the rejected RPS 17 (OS 38). The city hall's own wording is not reproduced —
- * only the codes. Replace them with an anonymized fixture in ./fixtures/live
- * once the live validation in READ-TOOLS-LIVE.md is done.
- */
-describe("get_service_order_status: what the agent gets back", () => {
-  const sendAttempt = (lote: number, hora: string) => [
-    { cCodigo: "", cDescricao: `Enviando o RPS 17 no Lote ${lote} para a prefeitura da sua cidade.`, cCorrecao: "", cSituacao: "", dData: "02/10/2026", hHora: hora },
-    { cCodigo: "", cDescricao: "Envio do RPS 17 retornou erros.", cCorrecao: "", cSituacao: "", dData: "02/10/2026", hHora: hora },
-    { cCodigo: "EM076", cDescricao: "mensagem EM076 da prefeitura", cCorrecao: "correção EM076", cSituacao: "ERRO", dData: "02/10/2026", hHora: hora },
-    { cCodigo: "E0314", cDescricao: "mensagem E0314 da prefeitura", cCorrecao: "correção E0314", cSituacao: "ERRO", dData: "02/10/2026", hHora: hora },
-    { cCodigo: "EM062", cDescricao: "mensagem EM062 da prefeitura", cCorrecao: "correção EM062", cSituacao: "ERRO", dData: "02/10/2026", hHora: hora },
-  ];
-  const os = (rps: Record<string, unknown>) => ({
-    cCodIntOS: "", nCodOS: 5975011809, cNumOS: "38", cEtapa: "60", cCancelada: "N", cFaturada: "S", cAmbiente: "P",
-    dDtFat: "02/10/2026", nValorTot: 350, cUrlPdfRecibo: "",
-    ListaRpsNfse: [{
-      nLote: 2, cStatusLote: "003", cProtocolo: "", nRps: "17", cStatusRps: "003", nNfse: "", cCodVerif: "",
-      cCNPJ: "11011011000111", cInscrMunicipal: 1, danfe: "", cUrlNfse: "", cUrlPdfDemo: "", cUrlPdfDest: "", cUrlRps: "",
-      ...rps,
-    }],
-  });
-
-  it("a rejected RPS: status 003 and every attempt's messages, newest first, as Omie sent them", async () => {
-    const mensagens = [...sendAttempt(3, "11:40:00"), ...sendAttempt(2, "10:05:00")];
-    const { sent, result } = await send("get_service_order_status", { nCodOS: 5975011809, lMsg: true }, os({ mensagens, xml_distr: "" }));
-
-    expect(sent).toEqual({ nCodOS: 5975011809, lMsg: true });
-    const [rps] = JSON.parse(result.content[0].text).ListaRpsNfse;
-    expect(rps).toMatchObject({ nRps: "17", cStatusRps: "003", cStatusLote: "003" });
-    expect(rps.mensagens).toEqual(mensagens);
-    expect(rps.mensagens.filter((m: any) => m.cSituacao === "ERRO").map((m: any) => m.cCodigo))
-      .toEqual(["EM076", "E0314", "EM062", "EM076", "E0314", "EM062"]);
-    expect(rps).not.toHaveProperty("xml_distr");
-  });
-
-  it("an issued NFS-e: status 004 and the note number kept, the inline XML left out", async () => {
-    const xml = `<?xml version="1.0" encoding="UTF-8"?><CompNfse>${"<x/>".repeat(5000)}</CompNfse>`;
-    const { result } = await send(
-      "get_service_order_status",
-      { nCodOS: 5973717027 },
-      { ...os({ nRps: "15", cStatusLote: "004", cStatusRps: "004", nNfse: "1071", cCodVerif: "ABC123", mensagens: [], xml_distr: xml }), nCodOS: 5973717027, cNumOS: "36" },
-    );
-    const text = result.content[0].text;
-
-    expect(text).not.toContain("CompNfse");
-    const out = JSON.parse(text);
-    expect(out).toMatchObject({ nCodOS: 5973717027, cNumOS: "36", cFaturada: "S" });
-    expect(out.ListaRpsNfse[0]).toMatchObject({ nRps: "15", cStatusRps: "004", nNfse: "1071", cCodVerif: "ABC123" });
-    expect(out.ListaRpsNfse[0]).not.toHaveProperty("xml_distr");
-  });
-
-  it("an OS with no RPS is passed through untouched", async () => {
+describe("get_service_order_status: a response without RPS", () => {
+  it("is passed through untouched", async () => {
     const body = { nCodOS: 5963175100, cNumOS: "20", cEtapa: "20", cFaturada: "N" };
     const { result } = await send("get_service_order_status", { nCodOS: 5963175100 }, body);
     const { read_at, ...out } = JSON.parse(result.content[0].text);
@@ -567,6 +573,7 @@ describe("descriptions say what production showed", () => {
     ["get_financial", /"A VENCER\\", with a space/, /list_open_titles/],
     ["list_accounts_payable", /paid and later cancelled/, /no due-date filter/],
     ["get_service_order_status", /the only read that says why an RPS was rejected/, /does not resend the RPS — that is ReenviarOS/],
+    ["get_service_order_status", /Without lMsg only the error messages come back, OLDEST first and with no date/, /the first\s+block holds the latest attempt's errors/],
     ["list_nfse", /cStatusNFSe \\"R\\"/, /get_service_order_status/],
     ["get_service_order", /get_service_order_status/, /nothing about the NFS-e/],
     ["invoice_service_order", /does not\s+mean the NFS-e was issued/, /get_service_order_status/],
