@@ -61,7 +61,7 @@ every `list_*` / `get_*` description repeats the clause, because not every MCP
 client injects server instructions.
 
 <!-- tools:begin — generated from src/tools by readme.test.ts; do not edit by hand -->
-## Tools (88)
+## Tools (89)
 
 > Conformance status of each tool against the official Omie API reference:
 > [`API-AUDIT.md`](./API-AUDIT.md). Every tool carries the Omie method it maps
@@ -119,13 +119,14 @@ client injects server instructions.
 | `list_purchase_orders` | `PesquisarPedCompra` | List purchase orders from Omie ERP; returns nCodPed per order |
 | `get_purchase_order` | `ConsultarPedCompra` | Consult a specific purchase order in Omie ERP |
 
-### Services (OS / NFS-e) (10)
+### Services (OS / NFS-e) (11)
 
 | Tool | Omie method | Purpose |
 |---|---|---|
 | `create_service_order` | `IncluirOS` | Create a service order (OS) in Omie ERP |
 | `list_service_orders` | `ListarOS` | List service orders (OS) from Omie ERP |
 | `get_service_order` | `ConsultarOS` | Consult a specific service order in Omie ERP by nCodOS, integration code or the OS number shown to the customer |
+| `get_service_order_status` | `StatusOS` | Get the city-hall status of a service order's RPS / NFS-e in Omie ERP, with the city hall's own messages — the only read that says why an RPS was rejected: list_nfse and get_service_order carry no message |
 | `update_service_order` | `AlterarOS` | Alter an existing service order in Omie ERP |
 | `change_service_order_stage` | `TrocarEtapaOS` | Move a service order to another stage in Omie ERP |
 | `validate_service_order` | `ValidarOS` | Validate a service order for billing in Omie ERP without issuing anything |

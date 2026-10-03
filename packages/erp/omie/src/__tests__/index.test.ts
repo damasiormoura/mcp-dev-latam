@@ -108,6 +108,7 @@ const MIN_ARGS: Record<string, unknown> = {
   cancel_order: { nCodPed: 1 },
   get_purchase_order: { nCodPed: 1 },
   get_service_order: { nCodOS: 1 },
+  get_service_order_status: { nCodOS: 1 },
   validate_service_order: { nCodOS: 1 },
   invoice_service_order: { nCodOS: 1 },
   cancel_service_order: { nCodOS: 1, cCancelarNfse: "N" },
@@ -188,9 +189,40 @@ describe("mcp-omie", () => {
     for (const name of ["reconcile_receipt", "unreconcile_receipt"]) {
       expect(ann(name), name).toMatchObject({ readOnlyHint: false, destructiveHint: true });
     }
-    for (const name of ["get_cash_entry", "list_unreconciled_entries"]) {
+    for (const name of ["get_cash_entry", "list_unreconciled_entries", "get_service_order_status"]) {
       expect(ann(name), name).toMatchObject({ readOnlyHint: true });
     }
+  });
+
+  describe("get_service_order_status", () => {
+    it("asks StatusOS on /servicos/os/ with exactly the arguments given", async () => {
+      const { url, body } = await call("get_service_order_status", { nCodOS: 5975011809, lMsg: true });
+
+      expect(url).toBe("https://app.omie.com.br/api/v1/servicos/os/");
+      expect(body.call).toBe("StatusOS");
+      expect(body.param).toEqual([{ nCodOS: 5975011809, lMsg: true }]);
+    });
+
+    it("accepts the integration code instead of nCodOS", async () => {
+      const { body } = await call("get_service_order_status", { cCodIntOS: "OS-38" });
+      expect(body.param[0]).toEqual({ cCodIntOS: "OS-38" });
+    });
+
+    it("refuses a call that does not identify the OS, before reaching Omie", async () => {
+      const result = await callToolHandler({ params: { name: "get_service_order_status", arguments: { lMsg: true } } });
+
+      expect(result.isError).toBe(true);
+      expect(result.content[0].text).toContain("at least one of: nCodOS, cCodIntOS");
+      expect(mockFetch).not.toHaveBeenCalled();
+    });
+
+    it("refuses lMsg as \"S\": the docs say S/N, the field is boolean", async () => {
+      const result = await callToolHandler({ params: { name: "get_service_order_status", arguments: { nCodOS: 1, lMsg: "S" } } });
+
+      expect(result.isError).toBe(true);
+      expect(result.content[0].text).toContain("lMsg must be a boolean");
+      expect(mockFetch).not.toHaveBeenCalled();
+    });
   });
 
   describe("fields whose Omie default is destructive", () => {

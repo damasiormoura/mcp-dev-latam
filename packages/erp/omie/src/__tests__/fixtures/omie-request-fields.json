@@ -562,6 +562,41 @@
         }
       }
     },
+    "get_service_order_status": {
+      "path": "/servicos/os/",
+      "call": "StatusOS",
+      "requestType": "osStatusRequest",
+      "fields": {
+        "cCodIntOS": {
+          "type": "string60",
+          "deprecated": false
+        },
+        "nCodOS": {
+          "type": "integer",
+          "deprecated": false
+        },
+        "lPdfDemo": {
+          "type": "boolean",
+          "deprecated": false
+        },
+        "lPdfDest": {
+          "type": "boolean",
+          "deprecated": false
+        },
+        "lRps": {
+          "type": "boolean",
+          "deprecated": false
+        },
+        "lPdfRecibo": {
+          "type": "boolean",
+          "deprecated": false
+        },
+        "lMsg": {
+          "type": "boolean",
+          "deprecated": false
+        }
+      }
+    },
     "get_stock_position": {
       "path": "/estoque/consulta/",
       "call": "ListarPosEstoque",
