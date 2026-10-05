@@ -49,7 +49,7 @@ import { TOOLS, findTool, INSTRUCTIONS, annotationsFor } from "./tools/index.js"
 import { ToolRefusal } from "./tools/types.js";
 import { type Caller, attributionText, buildEntry, closeAuditLog, currentCaller, record, reopenAuditLog, stamp, withCaller } from "./audit.js";
 
-const VERSION = "0.9.5";
+const VERSION = "0.9.6";
 
 const DEMO_MODE = process.argv.includes("--demo") || process.env.MCP_DEMO === "true";
 
@@ -161,14 +161,37 @@ function metadataUrl(): string {
 // means every session's handlers are registered the same explicit way the
 // stdio server's are, with no dependency on the SDK's internal field layout.
 /**
- * Every object result leaves with `read_at`, the instant Omie was asked. It is
- * what lets the agent see, in the result itself, that it is looking at a
- * snapshot — and re-read when the next question comes much later.
+ * What a call asked for: the tool and its arguments exactly as the agent sent
+ * them, before defaults or attribution. Every result and every error carries
+ * it. On 2026-10-05, three reads got another call's result after Claude Code
+ * reconnected through Anthropic's MCP proxy. The agent caught it only because
+ * the record ID in each body happened to differ from the one it asked for. A
+ * list, an empty result or a write's confirmation has no such ID to give the
+ * swap away. 0.9.5 closed the path inside this server (a reused request id is
+ * refused); a swap in the proxy or the client would still arrive looking
+ * right. With `requested` the agent can check every result against the call
+ * it made, and INSTRUCTIONS tells it to.
  */
-function withReadAt(result: unknown): unknown {
-  return result !== null && typeof result === "object" && !Array.isArray(result)
-    ? { read_at: new Date().toISOString(), ...(result as Record<string, unknown>) }
-    : result;
+type Requested = { tool: string; arguments: Record<string, unknown> };
+
+/**
+ * A result leaves with `requested` first, then `read_at`, the instant Omie
+ * was asked. `read_at` is what lets the agent see, in the result itself, that
+ * it is looking at a snapshot, and re-read when the next question comes much
+ * later. An object result gets both alongside its own fields. Anything else
+ * (an array, null) is wrapped as `result`, so that no result goes without
+ * them.
+ */
+function answer(result: unknown, requested: Requested) {
+  const body = result !== null && typeof result === "object" && !Array.isArray(result)
+    ? { requested, read_at: new Date().toISOString(), ...(result as Record<string, unknown>) }
+    : { requested, read_at: new Date().toISOString(), result };
+  return { content: [{ type: "text", text: JSON.stringify(body, null, 2) }] };
+}
+
+/** An error, with what it answers on its last line. */
+function failure(text: string, requested: Requested) {
+  return { content: [{ type: "text", text: `${text}\nrequested: ${JSON.stringify(requested)}` }], isError: true };
 }
 
 function buildServer(): Server {
@@ -195,6 +218,7 @@ function buildServer(): Server {
     // rejected settlement attempt is exactly as interesting as a successful
     // one when the question is who tried to do what.
     const caller = currentCaller();
+    const requested: Requested = { tool: name, arguments: args };
     const startedAt = Date.now();
     const since = () => Date.now() - startedAt;
 
@@ -204,7 +228,7 @@ function buildServer(): Server {
         caller, tool: name, path: "", call: "",
         outcome: "invalid", durationMs: since(), error: "unknown tool",
       }));
-      return { content: [{ type: "text", text: `Unknown tool: ${name}` }], isError: true };
+      return failure(`Unknown tool: ${name}`, requested);
     }
 
     const problems = validateArgs(tool.inputSchema, args);
@@ -213,10 +237,7 @@ function buildServer(): Server {
         caller, tool: name, path: tool.path, call: tool.call,
         outcome: "invalid", durationMs: since(), args, error: problems.join("; "),
       }));
-      return {
-        content: [{ type: "text", text: `Invalid arguments for ${name}:\n- ${problems.join("\n- ")}` }],
-        isError: true,
-      };
+      return failure(`Invalid arguments for ${name}:\n- ${problems.join("\n- ")}`, requested);
     }
 
     // Attribution goes in after validation, so a stamp can never be the reason
@@ -229,7 +250,7 @@ function buildServer(): Server {
         caller, tool: name, path: tool.path, call: tool.call,
         outcome: "demo", durationMs: since(), args, stamped,
       }));
-      return { content: [{ type: "text", text: JSON.stringify(withReadAt(DEMO_RESPONSES[name] ?? demoFallback(name, param)), null, 2) }] };
+      return answer(DEMO_RESPONSES[name] ?? demoFallback(name, param), requested);
     }
 
     if (tool.run) {
@@ -250,7 +271,7 @@ function buildServer(): Server {
       };
       try {
         const result = await tool.run(args, { request, attribution: attributionText(caller), now: new Date() });
-        return { content: [{ type: "text", text: JSON.stringify(withReadAt(decodeEntities(result)), null, 2) }] };
+        return answer(decodeEntities(result), requested);
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
         if (err instanceof ToolRefusal) {
@@ -259,7 +280,7 @@ function buildServer(): Server {
             outcome: "invalid", durationMs: since(), args, error: message,
           }));
         }
-        return { content: [{ type: "text", text: `Error: ${message}` }], isError: true };
+        return failure(`Error: ${message}`, requested);
       }
     }
 
@@ -270,14 +291,14 @@ function buildServer(): Server {
         outcome: "ok", durationMs: since(), args, result, stamped,
       }));
       const shaped = decodeEntities(tool.transform ? tool.transform(result, args) : result);
-      return { content: [{ type: "text", text: JSON.stringify(withReadAt(shaped), null, 2) }] };
+      return answer(shaped, requested);
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       record(buildEntry({
         caller, tool: name, path: tool.path, call: tool.call,
         outcome: "error", durationMs: since(), args, error: message, stamped,
       }));
-      return { content: [{ type: "text", text: `Error: ${message}` }], isError: true };
+      return failure(`Error: ${message}`, requested);
     }
   });
 

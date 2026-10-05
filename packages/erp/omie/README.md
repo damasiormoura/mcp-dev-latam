@@ -60,6 +60,20 @@ write tools change a production ERP. Every object result carries `read_at`;
 every `list_*` / `get_*` description repeats the clause, because not every MCP
 client injects server instructions.
 
+Since 0.9.6 every result also says **what it answers**. It starts with
+`requested`, the tool and the arguments exactly as the agent sent them (before
+defaults or attribution), then `read_at`. A result that is not an object (an
+array, `null`) is wrapped as `result` so it carries both. Every error ends with
+a `requested: {…}` line. The instructions tell the agent to discard a result
+whose `requested` does not match the call it made. They also say that a
+connection error ("session expired", connection closed, a timeout) does not
+mean the call did not run, and that after one on a write it must read the
+record before sending the write again. Every write tool's description repeats
+that. Both came from production
+([SELF-HOSTING.md](./SELF-HOSTING.md#a-request-id-still-being-answered-gets-409)):
+three reads got another call's result after a reconnect, and three calls
+reported as "session expired" had run in Omie.
+
 <!-- tools:begin — generated from src/tools by readme.test.ts; do not edit by hand -->
 ## Tools (90)
 
