@@ -161,10 +161,11 @@ export type AuditEntry = {
   call: string;
   /**
    * "denied" is the odd one out: it is not a tool call at all, but a request
-   * refused by the transport before dispatch — currently, a valid token
-   * reaching for a session that belongs to someone else. Worth a line for the
-   * same reason the rejected calls are: an audit trail that only records what
-   * succeeded cannot show an attempt.
+   * refused by the transport before dispatch. There are two cases: a valid
+   * token reaching for a session that belongs to someone else, and a request
+   * whose JSON-RPC id the session is still answering (index.ts,
+   * refuseReusedId). Worth a line for the same reason the rejected calls are:
+   * an audit trail that only records what succeeded cannot show an attempt.
    */
   outcome: "ok" | "invalid" | "error" | "demo" | "denied";
   durationMs: number;

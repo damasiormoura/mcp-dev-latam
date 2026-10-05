@@ -331,6 +331,14 @@ Sessions are held in memory, so a restart or redeploy invalidates them. The
 server answers `404` for an unknown session ID, which tells a spec-compliant
 client to open a fresh session on its own.
 
+A request whose JSON-RPC id the session is still answering is refused with
+`409` and nothing runs. The SDK transport routes each result to the HTTP
+response of the request with that id, so letting the second request in would
+hand it the first one's result. That happened in production (0.9.5, see
+[SELF-HOSTING.md](./SELF-HOSTING.md#a-request-id-still-being-answered-gets-409)).
+The spec forbids reusing an id within a session, so a conforming client never
+hits this. An id is free again once its result has been sent.
+
 ## Authentication
 
 There are two independent layers, and the HTTP transport needs both.
@@ -386,7 +394,9 @@ Sessions belong to the identity that opened them: a session ID is just a value
 the client sends back, so without that check any valid token could drive
 someone else's session and one `sessionId` in the log could cover two people.
 A token reaching for a session it does not own gets a `404` and a `denied`
-entry — nothing runs, but the attempt is visible.
+entry — nothing runs, but the attempt is visible. A request reusing a JSON-RPC
+id the session is still answering gets a `409` and a `denied` entry carrying
+the tool, its arguments and `request id N reused while still being answered`.
 
 Arguments are summarised down to identifying and monetary fields rather than
 logged whole, so a file that exists to answer "who did this" doesn't accumulate

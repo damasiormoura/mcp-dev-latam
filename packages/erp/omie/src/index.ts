@@ -38,7 +38,7 @@
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
-import { isInitializeRequest } from "@modelcontextprotocol/sdk/types.js";
+import { isInitializeRequest, isJSONRPCRequest, type JSONRPCRequest, type RequestId } from "@modelcontextprotocol/sdk/types.js";
 import {
   CallToolRequestSchema,
   ListToolsRequestSchema,
@@ -49,7 +49,7 @@ import { TOOLS, findTool, INSTRUCTIONS, annotationsFor } from "./tools/index.js"
 import { ToolRefusal } from "./tools/types.js";
 import { type Caller, attributionText, buildEntry, closeAuditLog, currentCaller, record, reopenAuditLog, stamp, withCaller } from "./audit.js";
 
-const VERSION = "0.9.4";
+const VERSION = "0.9.5";
 
 const DEMO_MODE = process.argv.includes("--demo") || process.env.MCP_DEMO === "true";
 
@@ -402,7 +402,9 @@ async function main() {
     // be right (it follows the token on each request, not the session), but a
     // session ID would stop meaning "one person's run of calls", which is
     // exactly what it is recorded for.
-    type Session = { transport: StreamableHTTPServerTransport; lastSeenAt: number; owner?: string };
+    // `answering` holds the JSON-RPC ids of the requests the session has not
+    // answered yet — see refuseReusedId below.
+    type Session = { transport: StreamableHTTPServerTransport; lastSeenAt: number; owner?: string; answering: Set<RequestId> };
     const sessions = new Map<string, Session>();
 
     /**
@@ -430,6 +432,81 @@ async function main() {
         error: "session belongs to another identity",
       }));
       unknownSession(res);
+    }
+
+    // The SDK transport sends each result to the HTTP response that carried
+    // the request with that id, looked up by the id alone. A second request
+    // that arrives with an id the session is still answering replaces the
+    // first one's entry. The first one's result is then written to the second
+    // one's response, under the right id, so the client cannot tell it is the
+    // result of a different call. That happened in production on 2026-10-05.
+    // Claude Code reaches this server through Anthropic's MCP proxy; after a
+    // session expiry it opened two connections two seconds apart, each
+    // numbering its requests from zero, and the proxy carried both into one
+    // session here. The agent asked for OS 5975012350 and got OS 5975011809,
+    // and asked for a sales order and got an OS (runbooks/mcp-omie.md in
+    // mouraishikawa has the trail).
+    //
+    // The MCP spec forbids reusing an id within a session, so the client is
+    // at fault. Handing it some other call's result is still the wrong way to
+    // fail: this server moves money and stock. So a request whose id is still
+    // being answered is refused before it reaches the transport. Nothing
+    // runs, and the refusal is an HTTP error on its own response, not a
+    // message carrying the ambiguous id. The id is free again as soon as its
+    // result has been sent, and not before. A POST the transport turns away
+    // (wrong Accept, protocol version) keeps its ids taken. The SDK can also
+    // answer 400 after it has already dispatched part of a POST, and freeing
+    // an id that may still be running would reopen the same race. A
+    // conforming client never reuses an id anyway.
+    function requestsIn(body: unknown): JSONRPCRequest[] {
+      return (Array.isArray(body) ? body : [body]).filter(isJSONRPCRequest);
+    }
+
+    /** Marks the ids as being answered, or returns the request whose id already is (or repeats within the body). */
+    function claimIds(session: Session, requests: JSONRPCRequest[]): JSONRPCRequest | undefined {
+      const ids = new Set<RequestId>();
+      for (const r of requests) {
+        if (session.answering.has(r.id) || ids.has(r.id)) return r;
+        ids.add(r.id);
+      }
+      for (const id of ids) session.answering.add(id);
+      return undefined;
+    }
+
+    function refuseReusedId(res: any, caller: Caller, reused: JSONRPCRequest) {
+      const toolCall = reused.method === "tools/call" ? (reused.params as { name?: string; arguments?: unknown } | undefined) : undefined;
+      const id = JSON.stringify(reused.id);
+      record(buildEntry({
+        caller,
+        tool: toolCall?.name ?? reused.method,
+        path: "", call: "",
+        outcome: "denied", durationMs: 0,
+        args: toolCall?.arguments,
+        error: `request id ${id} reused while still being answered`,
+      }));
+      res.status(409).json({
+        jsonrpc: "2.0",
+        error: {
+          code: -32600,
+          message:
+            `Refused: request id ${id} is still being answered in this session. A JSON-RPC id must not be ` +
+            "reused within an MCP session; answering this request would have delivered the other request's " +
+            "result to it. Nothing was executed. Send the call again with a new id.",
+        },
+        id: null,
+      });
+    }
+
+    /** Frees a request's id once the session's Server has sent its result (or error). */
+    function freeOnAnswer(t: StreamableHTTPServerTransport, answering: Set<RequestId>) {
+      const send = t.send.bind(t);
+      t.send = async (message, options) => {
+        try {
+          return await send(message, options);
+        } finally {
+          if ("id" in message && !("method" in message)) answering.delete(message.id as RequestId);
+        }
+      };
     }
 
     const SESSION_IDLE_TIMEOUT_MS = Number(process.env.MCP_SESSION_IDLE_TIMEOUT_MS) || 30 * 60 * 1000;
@@ -496,14 +573,19 @@ async function main() {
         const existing = sid ? sessions.get(sid) : undefined;
         if (existing) {
           if (!ownedBy(existing, caller)) { denySession(req, res, caller); return; }
-          touch(sid); await existing.transport.handleRequest(req, res, req.body); return;
+          touch(sid);
+          const reused = claimIds(existing, requestsIn(req.body));
+          if (reused) { refuseReusedId(res, caller, reused); return; }
+          await existing.transport.handleRequest(req, res, req.body); return;
         }
         if (sid) { unknownSession(res); return; }
         if (!sid && isInitializeRequest(req.body)) {
+          const answering = new Set<RequestId>();
           const t = new StreamableHTTPServerTransport({
             sessionIdGenerator: () => randomUUID(),
-            onsessioninitialized: (id) => { sessions.set(id, { transport: t, lastSeenAt: Date.now(), owner: caller.sub }); },
+            onsessioninitialized: (id) => { sessions.set(id, { transport: t, lastSeenAt: Date.now(), owner: caller.sub, answering }); },
           });
+          freeOnAnswer(t, answering);
           t.onclose = () => { if (t.sessionId) sessions.delete(t.sessionId); };
           await buildServer().connect(t);
           await t.handleRequest(req, res, req.body); return;

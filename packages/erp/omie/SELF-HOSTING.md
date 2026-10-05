@@ -199,6 +199,44 @@ an unknown session, which tells a spec-compliant client to open a fresh one; a
 `400` in that position (as upstream had) reads as a malformed request and
 surfaces as a generic error instead.
 
+### A request id still being answered gets `409`
+
+The SDK's Streamable HTTP transport sends each result to the HTTP response of
+the request with the same JSON-RPC id, looked up by id alone within the
+session. If a second request arrives with an id the session is still
+answering, it takes over the first one's entry, and the first one's result is
+written to the second one's response. The id is right, so the client cannot
+tell the result belongs to a different call.
+
+This happened on 2026-10-05 at 18:34 UTC. Claude Code reaches this server
+through Anthropic's MCP proxy (`api.anthropic.com/v2/ccr-sessions/…/mcp`).
+After a session expiry it opened two connections two seconds apart, and each
+numbered its requests from zero. The proxy carried both into one session
+here. The audit log shows ten executions in that session, each with its own
+arguments. Still, the agent got OS 38 when it asked for OS 40, OS 40 when it
+asked for OS 39, and an OS when it asked for a sales order. Every result it
+received was the first-connection result for the id it reused.
+
+Since 0.9.5, a POST carrying an id the session is still answering is refused
+before dispatch:
+
+- `409` with a JSON-RPC error (`-32600`, `id: null`), and nothing runs;
+- a `denied` line in the audit trail, with the tool, its arguments and
+  `request id N reused while still being answered`.
+
+The refusal is bound to its own HTTP response, not to the id. That id is
+exactly what the client has confused, so an error carrying it could be matched
+to the wrong call too. An id is free again once its result has been sent,
+including one whose response stream the client abandoned, and not before. Two
+kinds of id stay taken for the rest of the session: a cancelled request's,
+since the SDK sends no result for it, and those of a POST the transport turned
+away (`400`/`406`/`415`). The SDK can answer `400` after it has already
+dispatched part of a POST, so freeing those ids could reopen the race. The
+spec forbids reusing any of them anyway.
+
+`denied` lines with that error mean the client side is reusing ids. Each line
+is a call the agent saw fail rather than get the wrong answer.
+
 ### `docker restart` does not re-read `--env-file`
 
 Environment variables are captured when the container is **created**. After

@@ -33,9 +33,13 @@ vi.mock("@modelcontextprotocol/sdk/server/streamableHttp.js", () => ({
     sessionId?: string;
     onclose?: () => void;
     handled: unknown[] = [];
+    sent: unknown[] = [];
     closed = 0;
     constructor(public opts: { sessionIdGenerator: () => string; onsessioninitialized: (id: string) => void }) {
       h.transports.push(this);
+    }
+    async send(message: unknown) {
+      this.sent.push(message);
     }
     async handleRequest(req: any, res: any, body?: unknown) {
       this.handled.push(body ?? req.method);
@@ -195,6 +199,33 @@ describe("HTTP transport without auth (MCP_INSECURE_HTTP)", () => {
       expect(r.statusCode, verb).toBe(404);
       expect(r.body.error.message).toBe("Session not found");
     }
+  });
+
+  it("refuses a request id the session is still answering, and frees it once the result is sent", async () => {
+    // session-race.test.ts runs this against the real SDK transport; here,
+    // the bookkeeping on its own: the mock transport never answers by itself.
+    const init = res();
+    await h.routes["POST /mcp"](req({}, INIT), init);
+    const sid = init.body.session;
+    const [t] = h.transports;
+    const post = async (id: number) => {
+      const r = res();
+      await h.routes["POST /mcp"](req({ "mcp-session-id": sid }, { jsonrpc: "2.0", id, method: "tools/list" }), r);
+      return r;
+    };
+
+    expect((await post(5)).statusCode).toBe(200);
+    const refused = await post(5);
+    expect(refused.statusCode).toBe(409);
+    expect(refused.body).toMatchObject({ jsonrpc: "2.0", id: null, error: { code: -32600 } });
+    expect(t.handled).toHaveLength(2); // initialize and the first id 5: the second never reached the transport
+
+    // A notification the server sends does not answer anything; the result does.
+    await t.send({ jsonrpc: "2.0", method: "notifications/message", params: { level: "info", data: "x" } });
+    expect((await post(5)).statusCode).toBe(409);
+    await t.send({ jsonrpc: "2.0", id: 5, result: { tools: [] } });
+    expect(t.sent).toHaveLength(2);
+    expect((await post(5)).statusCode).toBe(200);
   });
 
   it("answers 400 to a non-initialize request with no session", async () => {
