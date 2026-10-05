@@ -45,7 +45,14 @@ export const INSTRUCTIONS =
   "write by reading the record's status. Right after a write a get_* may still show the old state for " +
   "a few seconds, and an identical call repeated at once is refused as REDUNDANT — confirm through the " +
   "listing tool (get_financial, list_orders, ...), wait the seconds Omie asks before repeating, never " +
-  "loop, and never re-send a write because a read looks unchanged.";
+  "loop, and never re-send a write because a read looks unchanged. Every result starts with " +
+  "`requested` (on an error, its last line): the tool and the arguments it answers. If it does not " +
+  "match the call you made, the result belongs to another call — discard it, and never draw a " +
+  "conclusion from it or act on it; call a read again, but for a write read the record before sending " +
+  "it again, since yours may have run. An error from the connection rather than from this server " +
+  "(\"session expired\", connection closed, a timeout) does not mean the call did not run: it may " +
+  "have reached Omie. After one on a write, read the record or the listing before sending the write " +
+  "again.";
 
 /**
  * Appended to every read tool. Repeated on purpose, not only in `INSTRUCTIONS`:
@@ -55,6 +62,17 @@ export const INSTRUCTIONS =
 const LIVE_DATA =
   " Live ERP data: the result is a snapshot (read_at) — call again before stating the current " +
   "state, even if already called in this conversation.";
+
+/**
+ * Appended to every write tool, for the same reason LIVE_DATA is appended to
+ * reads. On 2026-10-05 three calls reached the agent as "session expired"
+ * after Claude Code reconnected, and all three ran in Omie. They were reads.
+ * For a write, the error would hide an effect that happened, and repeating it
+ * would do it twice.
+ */
+const UNCERTAIN_WRITE =
+  " A connection error instead of a result (\"session expired\", connection closed, timeout) does not " +
+  "mean this did not run: read the record before sending it again.";
 
 /**
  * A read is decided by the Omie method as well as the name: create_invoice is
@@ -98,7 +116,7 @@ export const TOOL_GROUPS: { title: string; tools: OmieTool[] }[] = [
 ];
 
 export const TOOLS: OmieTool[] = TOOL_GROUPS.flatMap((g) => g.tools).map((tool) =>
-  isRead(tool) ? { ...tool, description: tool.description + LIVE_DATA } : tool
+  ({ ...tool, description: tool.description + (isRead(tool) ? LIVE_DATA : UNCERTAIN_WRITE) })
 );
 
 /** Duplicate tool names would silently shadow each other at dispatch. */

@@ -269,11 +269,13 @@ describe("dispatch edges on the read path", () => {
     expect(JSON.parse(result.content[0].text)).toMatchObject({ departamentos: [] });
   });
 
-  it("a response that is not an object is passed through without read_at", async () => {
+  it("a response that is not an object is wrapped, so it still says what it answers and when", async () => {
     for (const body of [[{ nCodCC: 1 }], null]) {
       mockFetch.mockResolvedValueOnce({ ok: true, json: () => Promise.resolve(body) });
       const result = await callToolHandler({ params: { name: "list_departments", arguments: {} } });
-      expect(JSON.parse(result.content[0].text)).toEqual(body);
+      const { read_at, ...out } = JSON.parse(result.content[0].text);
+      expect(read_at).toMatch(/^\d{4}-\d{2}-\d{2}T/);
+      expect(out).toEqual({ requested: { tool: "list_departments", arguments: {} }, result: body });
     }
   });
 
@@ -284,8 +286,10 @@ describe("dispatch edges on the read path", () => {
       const plain = callToolHandler({ params: { name: "list_departments", arguments: {} } });
       const multiStep = callToolHandler({ params: { name: "cancel_account_receivable", arguments: { codigo_lancamento_omie: 1, motivo: "x" } } });
       await vi.advanceTimersByTimeAsync(30_000);
-      expect((await plain).content[0].text).toBe("Error: socket hang up");
-      expect((await multiStep).content[0].text).toBe("Error: socket hang up");
+      expect((await plain).content[0].text).toBe('Error: socket hang up\nrequested: {"tool":"list_departments","arguments":{}}');
+      expect((await multiStep).content[0].text).toBe(
+        'Error: socket hang up\nrequested: {"tool":"cancel_account_receivable","arguments":{"codigo_lancamento_omie":1,"motivo":"x"}}'
+      );
       // Reads are retried twice on a network-shaped failure: 3 attempts each.
       expect(mockFetch).toHaveBeenCalledTimes(6);
     } finally {
@@ -335,7 +339,8 @@ const fixtures: [string, Fixture][] = readdirSync(FIXTURES)
 async function replay(fx: Fixture) {
   const { result, sent } = await send(fx.tool, fx.args, fx.response);
   expect(result.isError, result.content?.[0]?.text).toBeUndefined();
-  const { read_at, ...out } = JSON.parse(result.content[0].text);
+  const { requested, read_at, ...out } = JSON.parse(result.content[0].text);
+  expect(requested).toEqual({ tool: fx.tool, arguments: fx.args });
   expect(read_at).toMatch(/^\d{4}-\d{2}-\d{2}T/);
   return { sent, out };
 }
@@ -535,8 +540,9 @@ describe("get_service_order_status: a response without RPS", () => {
   it("is passed through untouched", async () => {
     const body = { nCodOS: 5963175100, cNumOS: "20", cEtapa: "20", cFaturada: "N" };
     const { result } = await send("get_service_order_status", { nCodOS: 5963175100 }, body);
-    const { read_at, ...out } = JSON.parse(result.content[0].text);
+    const { requested, read_at, ...out } = JSON.parse(result.content[0].text);
 
+    expect(requested).toEqual({ tool: "get_service_order_status", arguments: { nCodOS: 5963175100 } });
     expect(out).toEqual(body);
   });
 });

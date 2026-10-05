@@ -166,6 +166,67 @@ describe("mcp-omie", () => {
     expect(all.find((t) => t.name === "create_invoice")!.description).toMatch(/read_at/);
   });
 
+  // 2026-10-05: three reads got another call's result after a reconnect, and
+  // three calls reported as "session expired" had run. See index.ts, Requested.
+  describe("every result says what it answers; a connection error is not proof a call did not run", () => {
+    const lastLine = (text: string) => text.split("\n").at(-1)!;
+
+    it("instructions say to check `requested` and to read before re-sending a write; every write's description says it too", async () => {
+      const { INSTRUCTIONS, TOOLS: all, isRead } = await import("../tools/index.js");
+      expect(INSTRUCTIONS).toMatch(/`requested`/);
+      expect(INSTRUCTIONS).toMatch(/belongs to another call — discard it/);
+      // A mismatched write result must not be answered by sending the write again blind.
+      expect(INSTRUCTIONS).toMatch(/call a read again, but for a write read the record before sending it again/);
+      expect(INSTRUCTIONS).toMatch(/does not mean the call did not run/);
+      expect(INSTRUCTIONS).toMatch(/read the record or the listing before sending the write again/);
+      for (const t of all) {
+        expect(/does not mean this did not run/.test(t.description), `${t.name}`).toBe(!isRead(t));
+      }
+    });
+
+    it("a result starts with `requested`, then `read_at`, with the arguments as the agent sent them", async () => {
+      mockFetch.mockResolvedValueOnce({ ok: true, json: () => Promise.resolve({ Cabecalho: { nCodOS: 5975012350 } }) });
+      const result = await callToolHandler({ params: { name: "get_service_order", arguments: { nCodOS: 5975012350 } } });
+      const body = JSON.parse(result.content[0].text);
+      expect(Object.keys(body).slice(0, 2)).toEqual(["requested", "read_at"]);
+      expect(body.requested).toEqual({ tool: "get_service_order", arguments: { nCodOS: 5975012350 } });
+
+      // Defaults are what was sent to Omie, not what the agent asked: the echo leaves them out.
+      mockFetch.mockResolvedValueOnce({ ok: true, json: () => Promise.resolve({ departamentos: [] }) });
+      const listed = JSON.parse((await callToolHandler({ params: { name: "list_departments", arguments: {} } })).content[0].text);
+      expect(JSON.parse(mockFetch.mock.calls[1][1].body).param[0]).toHaveProperty("pagina");
+      expect(listed.requested).toEqual({ tool: "list_departments", arguments: {} });
+    });
+
+    it("a stamped write echoes the agent's arguments, not the attributed ones sent to Omie", async () => {
+      const { withCaller } = await import("../audit.js");
+      const stderr = vi.spyOn(console, "error").mockImplementation(() => {});
+      mockFetch.mockResolvedValueOnce({ ok: true, json: () => Promise.resolve({ codigo_pedido: 12345 }) });
+      const result = await withCaller({ sub: "u-1", email: "heloisa@example.com" }, () =>
+        callToolHandler({ params: { name: "create_order", arguments: MIN_ARGS.create_order } })
+      );
+      stderr.mockRestore();
+      expect(JSON.parse(mockFetch.mock.calls[0][1].body).param[0].observacoes.obs_venda).toContain("via MCP");
+      expect(JSON.parse(result.content[0].text).requested).toEqual({ tool: "create_order", arguments: MIN_ARGS.create_order });
+    });
+
+    it("an error ends with what it answers, whichever exit it took", async () => {
+      const unknown = await callToolHandler({ params: { name: "no_such_tool", arguments: { x: 1 } } });
+      expect(unknown.content[0].text).toBe('Unknown tool: no_such_tool\nrequested: {"tool":"no_such_tool","arguments":{"x":1}}');
+
+      const invalid = await callToolHandler({ params: { name: "get_service_order", arguments: { nCodOS: "abc" } } });
+      expect(invalid.isError).toBe(true);
+      expect(JSON.parse(lastLine(invalid.content[0].text).replace(/^requested: /, ""))).toEqual({
+        tool: "get_service_order", arguments: { nCodOS: "abc" },
+      });
+
+      mockFetch.mockResolvedValueOnce({ ok: false, status: 500, text: () => Promise.resolve('{"faultstring":"ERROR: Pedido não cadastrado"}') });
+      const refused = await callToolHandler({ params: { name: "get_sales_order", arguments: { codigo_pedido: 5975559754 } } });
+      expect(refused.content[0].text).toMatch(/^Omie API error|^Error: /);
+      expect(lastLine(refused.content[0].text)).toBe('requested: {"tool":"get_sales_order","arguments":{"codigo_pedido":5975559754}}');
+    });
+  });
+
   it("exposes only name/description/inputSchema/annotations over the wire", async () => {
     const { tools: listed } = await listToolsHandler();
 
@@ -564,8 +625,9 @@ describe("mcp-omie", () => {
       expect(mockFetch).not.toHaveBeenCalled();
       const body = JSON.parse(result.content[0].text);
       expect(body).toHaveProperty("clientes_cadastro");
-      // Even the curated demo answer is stamped: the agent must see the snapshot time.
+      // Even the curated demo answer is stamped: the agent must see the snapshot time, and what it answers.
       expect(body.read_at).toMatch(/^\d{4}-\d{2}-\d{2}T/);
+      expect(body.requested).toEqual({ tool: "list_customers", arguments: {} });
     });
 
     it("still runs schema validation before returning a response", async () => {
@@ -960,6 +1022,8 @@ describe("mcp-omie", () => {
       const body = JSON.parse(result.content[0].text);
 
       expect(result.isError).toBeUndefined();
+      // A multi-step tool's result says what it answers too.
+      expect(body.requested).toEqual({ tool: "cancel_account_receivable", arguments: { codigo_lancamento_omie: 5962280604, motivo: "título duplicado" } });
       expect(sent().map((s) => s.call)).toEqual([
         "ConsultarContaReceber", "AlterarContaReceber", "CancelarContaReceber", "ListarContasReceber",
       ]);

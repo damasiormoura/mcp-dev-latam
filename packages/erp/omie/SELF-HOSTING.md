@@ -237,6 +237,14 @@ spec forbids reusing any of them anyway.
 `denied` lines with that error mean the client side is reusing ids. Each line
 is a call the agent saw fail rather than get the wrong answer.
 
+The refusal only covers a swap inside this server. Since 0.9.6 every result
+starts with `requested`, the tool and the arguments it answers, and every error
+ends with it. A swap in the proxy or the client then shows as a mismatch the
+agent is told to discard. The same incident had three calls the agent saw as
+"session expired" that ran in Omie anyway (one at 18:35:07, abandoned by the
+client, ran at 18:35:08). So the instructions and every write tool's
+description say that a connection error is not proof a call did not run.
+
 ### `docker restart` does not re-read `--env-file`
 
 Environment variables are captured when the container is **created**. After
