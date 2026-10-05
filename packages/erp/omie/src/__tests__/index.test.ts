@@ -192,6 +192,8 @@ describe("mcp-omie", () => {
     for (const name of ["get_cash_entry", "list_unreconciled_entries", "get_service_order_status"]) {
       expect(ann(name), name).toMatchObject({ readOnlyHint: true });
     }
+    // Changing a catalogue entry overwrites what it had.
+    expect(ann("update_service")).toMatchObject({ readOnlyHint: false, destructiveHint: true });
   });
 
   describe("get_service_order_status", () => {
@@ -830,6 +832,99 @@ describe("mcp-omie", () => {
    * cancel, confirm. The title shapes below are trimmed from the production
    * titles cancelled by hand on 2026-09-27 that motivated it.
    */
+  describe("update_service", () => {
+    // Shaped from SRV00002 as list_services returned it in production on 2026-10-05.
+    const SERVICE = {
+      intListar: { nCodServ: 5958829722, cCodIntServ: "" },
+      cabecalho: {
+        cCodigo: "SRV00002", cDescricao: "MANUTENÇÃO PREVENTIVA", cCodLC116: "17.09", cCodServMun: "170901/170901",
+        cIdTrib: "01", nIdNBS: "114044300", nPrecoUnit: 0, cCodCateg: "1.01.02", cTipoDesc: "P", nValorDesc: 0, nAliqDesc: 0,
+      },
+      descricao: { cDescrCompleta: "MANUTENÇÃO PREVENTIVA" },
+      impostos: {
+        nAliqISS: 2, cRetISS: "N", cRetPIS: "N", cRetCOFINS: "N", cRetCSLL: "N", cRetIR: "N", cRetINSS: "N", lDeduzISS: false,
+        nAliqCbs: 0, nAliqIbsUf: 0, cCstIbsCbs: "", cClassTrib: "", cIndOper: "100301",
+      },
+      info: { dAlt: "05/10/2026", uAlt: "P001542102", inativo: "N" },
+    };
+    const FIX = { cCstIbsCbs: "000", cClassTrib: "000001" };
+    const ALTERED = { nCodServ: 5958829722, cCodIntServ: "", cCodStatus: "0", cDescStatus: "Serviço alterado com sucesso!" };
+
+    function respond(...bodies: unknown[]) {
+      for (const b of bodies) mockFetch.mockResolvedValueOnce({ ok: true, json: () => Promise.resolve(b) });
+    }
+    const sent = () => mockFetch.mock.calls.map(([url, opts]) => {
+      const body = JSON.parse(opts.body);
+      return { url, call: body.call, param: body.param[0] };
+    });
+    const run = (args: Record<string, unknown>) => callToolHandler({ params: { name: "update_service", arguments: args } });
+
+    it("reads the service, sends it whole with only the requested fields changed, and confirms through the listing", async () => {
+      respond(SERVICE, ALTERED, { cadastros: [{ ...SERVICE, impostos: { ...SERVICE.impostos, ...FIX } }] });
+
+      const result = await run({ intEditar: { nCodServ: 5958829722 }, impostos: FIX });
+      const body = JSON.parse(result.content[0].text);
+
+      expect(result.isError).toBeUndefined();
+      expect(sent().map((s) => s.call)).toEqual(["ConsultarCadastroServico", "AlterarCadastroServico", "ListarCadastroServico"]);
+      expect(sent().every((s) => s.url === "https://app.omie.com.br/api/v1/servicos/servico/")).toBe(true);
+      expect(sent()[0].param).toEqual({ nCodServ: 5958829722 });
+
+      const { cTipoDesc, nValorDesc, nAliqDesc, ...cabecalho } = SERVICE.cabecalho;
+      expect(sent()[1].param).toEqual({
+        intEditar: { nCodServ: 5958829722 },
+        cabecalho,
+        descricao: SERVICE.descricao,
+        impostos: { ...SERVICE.impostos, ...FIX },
+      });
+      expect(sent()[2].param).toEqual({ nPagina: 1, nRegPorPagina: 50, cCodigo: "SRV00002" });
+
+      expect(body).toMatchObject({ nCodServ: 5958829722, cCodigo: "SRV00002", resposta_omie: ALTERED, verificacao: { confirmado: true } });
+      expect(body.alteracoes).toEqual([
+        { campo: "impostos.cCstIbsCbs", antes: "", depois: "000" },
+        { campo: "impostos.cClassTrib", antes: "", depois: "000001" },
+      ]);
+    });
+
+    it("writes nothing when the service already has the values asked for", async () => {
+      respond(SERVICE);
+
+      const result = await run({ intEditar: { nCodServ: 5958829722 }, impostos: { cIndOper: "100301" }, cabecalho: { nPrecoUnit: 0 } });
+      const body = JSON.parse(result.content[0].text);
+
+      expect(sent().map((s) => s.call)).toEqual(["ConsultarCadastroServico"]);
+      expect(body).toMatchObject({ cCodigo: "SRV00002", alteracoes: [] });
+      expect(body.aviso).toMatch(/nada foi gravado/);
+    });
+
+    it("needs a service key and something to change before it asks Omie anything", async () => {
+      const noKey = await run({ intEditar: {}, impostos: FIX });
+      expect(noKey.content[0].text).toContain("intEditar must include at least one of: nCodServ, cCodIntServ");
+      const noChange = await run({ intEditar: { nCodServ: 1 } });
+      expect(noChange.content[0].text).toContain("at least one of: cabecalho, descricao, impostos");
+      expect(mockFetch).not.toHaveBeenCalled();
+    });
+
+    it("audits each Omie call under the tool's name", async () => {
+      respond(SERVICE, ALTERED, { cadastros: [] });
+      const stderr = vi.spyOn(console, "error").mockImplementation(() => {});
+      try {
+        await run({ intEditar: { nCodServ: 5958829722 }, impostos: FIX });
+        const lines = stderr.mock.calls
+          .map((c) => String(c[0]))
+          .filter((line) => line.startsWith("AUDIT "))
+          .map((line) => JSON.parse(line.slice("AUDIT ".length)));
+        expect(lines.map((l) => [l.tool, l.call, l.outcome])).toEqual([
+          ["update_service", "ConsultarCadastroServico", "ok"],
+          ["update_service", "AlterarCadastroServico", "ok"],
+          ["update_service", "ListarCadastroServico", "ok"],
+        ]);
+      } finally {
+        stderr.mockRestore();
+      }
+    });
+  });
+
   describe("cancel_account_receivable", () => {
     const OPEN_TITLE = {
       codigo_lancamento_omie: 5962280604, codigo_cliente_fornecedor: 5960133581,

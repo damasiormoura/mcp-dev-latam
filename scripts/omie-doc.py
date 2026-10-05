@@ -67,6 +67,7 @@ TOOL_METHODS: dict[str, tuple[str, str]] = {
     "get_service_order": ("servicos/os", "ConsultarOS"),
     "get_service_order_status": ("servicos/os", "StatusOS"),
     "list_services": ("servicos/servico", "ListarCadastroServico"),
+    "update_service": ("servicos/servico", "AlterarCadastroServico"),
     "list_nfse": ("servicos/nfse", "ListarNFSEs"),
     # finance
     "get_financial": ("financas/contareceber", "ListarContasReceber"),

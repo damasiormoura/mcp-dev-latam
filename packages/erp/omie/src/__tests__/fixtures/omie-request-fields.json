@@ -2332,6 +2332,37 @@
           "deprecated": false
         }
       }
+    },
+    "update_service": {
+      "path": "/servicos/servico/",
+      "call": "AlterarCadastroServico",
+      "requestType": "srvEditarRequest",
+      "fields": {
+        "intEditar": {
+          "type": "intEditar",
+          "deprecated": false
+        },
+        "cabecalho": {
+          "type": "cabecalho",
+          "deprecated": false
+        },
+        "descricao": {
+          "type": "descricao",
+          "deprecated": false
+        },
+        "impostos": {
+          "type": "impostos",
+          "deprecated": false
+        },
+        "produtosUtilizados": {
+          "type": "produtosUtilizados",
+          "deprecated": false
+        },
+        "viaUnica": {
+          "type": "viaUnica",
+          "deprecated": false
+        }
+      }
     }
   }
 }

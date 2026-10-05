@@ -584,7 +584,7 @@ Hoje dá para criar, alterar, consultar e faturar. Falta tudo entre isso:
 | ✅ `validate_service_order` / `cancel_service_order` | `ValidarOS` / `CancelarOS` |
 | ✅ `get_service_order` / `update_service_order` / `change_service_order_stage` | `/servicos/os/ ConsultarOS`, `AlterarOS`, `TrocarEtapaOS` |
 | ✅ `get_service_order_status` | `/servicos/os/ StatusOS` — status do lote e do RPS na prefeitura, com as mensagens dela (0.9.2; até a 0.9.1 a linha acima marcava `StatusOS` como feito, mas não havia tool) |
-| ✅ `list_services` / `create_service` | `/servicos/servico/` |
+| ✅ `list_services` / `update_service` | `/servicos/servico/ ListarCadastroServico`, `AlterarCadastroServico` (0.9.4; até a 0.9.3 a linha citava um `create_service` que nunca existiu) |
 | ✅ `list_nfse` | `/servicos/nfse/ ListarNFSEs` |
 | `create_service_contract` | `/servicos/contrato/` — já consta no roadmap v0.3 |
 
@@ -608,6 +608,20 @@ Hoje dá para criar, alterar, consultar e faturar. Falta tudo entre isso:
 > agora diz: sem `lMsg`, os erros de todas as tentativas vêm do mais antigo
 > para o mais recente e sem data, então só com `lMsg=true` dá para separar os
 > da última tentativa.
+>
+> **0.9.4:** `update_service` chama `AlterarCadastroServico`. A doc da Omie
+> não diz se esse método mescla o que recebe ou substitui o registro. Por
+> isso a tool lê o serviço (`ConsultarCadastroServico`), devolve o registro
+> inteiro com só os campos pedidos trocados e confirma pela listagem
+> (`ListarCadastroServico`, outro método, sem o REDUNDANT). Ela não grava
+> nada se os valores já forem os pedidos. Também recusa um serviço com
+> produtos utilizados ou NF via única, blocos que não edita. Motivo: em
+> 05/10/2026 as NFS-e rejeitadas de Ribeirão Preto só saíram depois de
+> corrigir no item da OS o código municipal (`170901/7120100` →
+> `170901/170901`, causa do EM076 e do E0314) e o `cIndOper` (`050101` →
+> `100301`, causa do EM062). O tipo de tributação (`cTribServ` 01) não era a
+> causa: as três notas saíram com 01. Os padrões que toda OS nova herda
+> ficam no cadastro de serviços, e este servidor só conseguia lê-lo.
 
 ### 5.5 Cadastros — CRUD incompleto
 

@@ -61,7 +61,7 @@ every `list_*` / `get_*` description repeats the clause, because not every MCP
 client injects server instructions.
 
 <!-- tools:begin — generated from src/tools by readme.test.ts; do not edit by hand -->
-## Tools (89)
+## Tools (90)
 
 > Conformance status of each tool against the official Omie API reference:
 > [`API-AUDIT.md`](./API-AUDIT.md). Every tool carries the Omie method it maps
@@ -119,7 +119,7 @@ client injects server instructions.
 | `list_purchase_orders` | `PesquisarPedCompra` | List purchase orders from Omie ERP; returns nCodPed per order |
 | `get_purchase_order` | `ConsultarPedCompra` | Consult a specific purchase order in Omie ERP |
 
-### Services (OS / NFS-e) (11)
+### Services (OS / NFS-e) (12)
 
 | Tool | Omie method | Purpose |
 |---|---|---|
@@ -133,6 +133,7 @@ client injects server instructions.
 | `invoice_service_order` | `FaturarOS` | Bill a service order in Omie ERP: issues the NFS-e at the city hall and creates the AR title(s) — a fiscal act, confirm with the person first and run validate_service_order before |
 | `cancel_service_order` | `CancelarOS` | Cancel a service order in Omie ERP |
 | `list_services` | `ListarCadastroServico` | List or search the service catalogue in Omie ERP |
+| `update_service` | `AlterarCadastroServico` | Change a registered service in Omie ERP's service catalogue — the codes and tax fields every NEW service order inherits: municipal service code, LC 116 item, NBS, taxation type, ISS and withholdings, and the IBS/CBS fields (CST, cClassTrib, cIndOper, rates) |
 | `list_nfse` | `ListarNFSEs` | List issued service invoices (NFS-e) in Omie ERP |
 
 ### Finance — receivables, payables, ledger (25)
