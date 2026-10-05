@@ -1,4 +1,5 @@
 import { OmieTool, listOnly, pagingSchema, withPaging, date, flag, orderingFilters, notes, ID, PAYMENT_TERM } from "./types.js";
+import { updateServiceTool } from "./service-catalogue.js";
 
 const OS = "/servicos/os/";
 const OSP = "/servicos/osp/";
@@ -334,7 +335,8 @@ export const serviceTools: OmieTool[] = [
       "List or search the service catalogue in Omie ERP (ListarCadastroServico). Resolves the " +
       "nCodServico that create_service_order items reference — returned here as intListar.nCodServ — along " +
       "with their LC 116 and municipal codes; pass cDescricao or cCodigo to find one rather than paging. " +
-      "Results come in code order: in production cOrdenarPor and cOrdemDecrescente changed nothing.",
+      "Results come in code order: in production cOrdenarPor and cOrdemDecrescente changed nothing. To change " +
+      "a service use update_service.",
     path: "/servicos/servico/",
     call: "ListarCadastroServico",
     inputSchema: {
@@ -356,6 +358,7 @@ export const serviceTools: OmieTool[] = [
     },
     param: withPaging("n"),
   },
+  updateServiceTool,
   {
     name: "list_nfse",
     description:
